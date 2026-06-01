@@ -99,13 +99,37 @@ ON DUPLICATE KEY UPDATE
 
 INSERT INTO restaurant_menu_items
   (restaurant_id, name, description, price, tag)
-VALUES
-  (1, 'Chicken Biryani', 'Aromatic rice, tender chicken, salad', 180, 'Popular'),
-  (1, 'Beef Tehari', 'Classic Dhaka tehari with mustard oil', 220, 'Local'),
-  (1, 'Borhani', 'Chilled spiced yogurt drink', 45, 'Drink'),
-  (2, 'Chicken Fried Rice', 'Egg, vegetables, chicken and house sauce', 170, 'Combo'),
-  (2, 'Thai Soup', 'Warm soup with chicken and prawns', 140, 'Hot'),
-  (2, 'Wonton', 'Crispy wonton with chili dip', 130, 'Snack'),
-  (3, 'Smoky Chicken Burger', 'Grilled patty, cheese, house sauce', 210, 'New'),
-  (3, 'Crispy Wings', 'Six pieces with garlic mayo', 240, 'Crispy'),
-  (3, 'French Fries', 'Salted fries with ketchup', 90, 'Side');
+SELECT 1, 'Chicken Biryani', 'Aromatic rice, tender chicken, salad', 180, 'Popular'
+WHERE NOT EXISTS (SELECT 1 FROM restaurant_menu_items WHERE restaurant_id = 1 AND name = 'Chicken Biryani');
+INSERT INTO restaurant_menu_items
+  (restaurant_id, name, description, price, tag)
+SELECT 1, 'Beef Tehari', 'Classic Dhaka tehari with mustard oil', 220, 'Local'
+WHERE NOT EXISTS (SELECT 1 FROM restaurant_menu_items WHERE restaurant_id = 1 AND name = 'Beef Tehari');
+INSERT INTO restaurant_menu_items
+  (restaurant_id, name, description, price, tag)
+SELECT 1, 'Borhani', 'Chilled spiced yogurt drink', 45, 'Drink'
+WHERE NOT EXISTS (SELECT 1 FROM restaurant_menu_items WHERE restaurant_id = 1 AND name = 'Borhani');
+INSERT INTO restaurant_menu_items
+  (restaurant_id, name, description, price, tag)
+SELECT 2, 'Chicken Fried Rice', 'Egg, vegetables, chicken and house sauce', 170, 'Combo'
+WHERE NOT EXISTS (SELECT 1 FROM restaurant_menu_items WHERE restaurant_id = 2 AND name = 'Chicken Fried Rice');
+INSERT INTO restaurant_menu_items
+  (restaurant_id, name, description, price, tag)
+SELECT 2, 'Thai Soup', 'Warm soup with chicken and prawns', 140, 'Hot'
+WHERE NOT EXISTS (SELECT 1 FROM restaurant_menu_items WHERE restaurant_id = 2 AND name = 'Thai Soup');
+INSERT INTO restaurant_menu_items
+  (restaurant_id, name, description, price, tag)
+SELECT 2, 'Wonton', 'Crispy wonton with chili dip', 130, 'Snack'
+WHERE NOT EXISTS (SELECT 1 FROM restaurant_menu_items WHERE restaurant_id = 2 AND name = 'Wonton');
+INSERT INTO restaurant_menu_items
+  (restaurant_id, name, description, price, tag)
+SELECT 3, 'Smoky Chicken Burger', 'Grilled patty, cheese, house sauce', 210, 'New'
+WHERE NOT EXISTS (SELECT 1 FROM restaurant_menu_items WHERE restaurant_id = 3 AND name = 'Smoky Chicken Burger');
+INSERT INTO restaurant_menu_items
+  (restaurant_id, name, description, price, tag)
+SELECT 3, 'Crispy Wings', 'Six pieces with garlic mayo', 240, 'Crispy'
+WHERE NOT EXISTS (SELECT 1 FROM restaurant_menu_items WHERE restaurant_id = 3 AND name = 'Crispy Wings');
+INSERT INTO restaurant_menu_items
+  (restaurant_id, name, description, price, tag)
+SELECT 3, 'French Fries', 'Salted fries with ketchup', 90, 'Side'
+WHERE NOT EXISTS (SELECT 1 FROM restaurant_menu_items WHERE restaurant_id = 3 AND name = 'French Fries');

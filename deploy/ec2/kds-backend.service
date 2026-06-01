@@ -1,0 +1,16 @@
+[Unit]
+Description=KDS backend API
+After=network.target mysql.service
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/opt/kds-app/backend
+Environment=NODE_ENV=production
+EnvironmentFile=/opt/kds-app/backend/.env
+ExecStart=/usr/bin/node src/server.js
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
