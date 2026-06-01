@@ -151,6 +151,75 @@ async function readOrders(whereSql = '', params = []) {
   return orderRows.map((order) => mapOrder(order, itemsByOrderId.get(order.id) || []));
 }
 
+function mapRestaurant(row, items) {
+  return {
+    id: row.id,
+    name: row.name,
+    cuisine: row.cuisine,
+    rating: Number(row.rating),
+    minutes: row.minutes,
+    deliveryFee: row.delivery_fee,
+    colorHex: row.color_hex,
+    approved: Boolean(row.is_approved),
+    menu: items.map((item) => ({
+      name: item.name,
+      description: item.description,
+      price: item.price,
+      tag: item.tag,
+    })),
+  };
+}
+
+async function readRestaurants() {
+  const [restaurantRows] = await pool.execute(
+    `SELECT * FROM restaurants
+     WHERE is_active = 1 AND is_approved = 1
+     ORDER BY created_at DESC, id DESC`,
+  );
+  if (restaurantRows.length === 0) {
+    return [];
+  }
+
+  const ids = restaurantRows.map((restaurant) => restaurant.id);
+  const placeholders = ids.map(() => '?').join(',');
+  const [itemRows] = await pool.execute(
+    `SELECT * FROM restaurant_menu_items
+     WHERE restaurant_id IN (${placeholders}) AND is_active = 1
+     ORDER BY id ASC`,
+    ids,
+  );
+  const itemsByRestaurantId = new Map();
+  for (const item of itemRows) {
+    const items = itemsByRestaurantId.get(item.restaurant_id) || [];
+    items.push(item);
+    itemsByRestaurantId.set(item.restaurant_id, items);
+  }
+
+  return restaurantRows.map((restaurant) =>
+    mapRestaurant(restaurant, itemsByRestaurantId.get(restaurant.id) || []),
+  );
+}
+
+async function insertMenuItems(connection, restaurantId, menu) {
+  for (const item of menu) {
+    if (!item.name || !item.description || !item.price) {
+      throw new Error('Every menu item needs name, description, and price');
+    }
+    await connection.execute(
+      `INSERT INTO restaurant_menu_items
+       (restaurant_id, name, description, price, tag)
+       VALUES (?, ?, ?, ?, ?)`,
+      [
+        restaurantId,
+        item.name,
+        item.description,
+        Number(item.price),
+        item.tag || 'Item',
+      ],
+    );
+  }
+}
+
 app.get('/health', asyncRoute(async (request, response) => {
   await pool.query('SELECT 1');
   response.json({ ok: true });
@@ -202,6 +271,97 @@ app.post('/auth/signin', asyncRoute(async (request, response) => {
     token: signToken(user),
     user: publicUser(user),
   });
+}));
+
+app.get('/restaurants', asyncRoute(async (request, response) => {
+  const restaurants = await readRestaurants();
+  response.json({ restaurants });
+}));
+
+app.post('/restaurants', auth('admin'), asyncRoute(async (request, response) => {
+  const {
+    name,
+    cuisine,
+    rating = 4.5,
+    minutes = 25,
+    deliveryFee = 40,
+    colorHex = '0xFFFFE7A3',
+    menu,
+  } = request.body;
+  if (!name || !cuisine || !Array.isArray(menu) || menu.length === 0) {
+    response.status(400).json({ message: 'Restaurant name, cuisine, and menu are required' });
+    return;
+  }
+
+  const connection = await pool.getConnection();
+  try {
+    await connection.beginTransaction();
+    const [restaurantResult] = await connection.execute(
+      `INSERT INTO restaurants
+       (name, cuisine, rating, minutes, delivery_fee, color_hex)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+      [name, cuisine, rating, minutes, deliveryFee, colorHex],
+    );
+
+    await insertMenuItems(connection, restaurantResult.insertId, menu);
+
+    await connection.commit();
+    const restaurants = await readRestaurants();
+    const restaurant = restaurants.find((entry) => entry.id === restaurantResult.insertId);
+    response.status(201).json({ restaurant });
+  } catch (error) {
+    await connection.rollback();
+    response.status(400).json({ message: error.message });
+  } finally {
+    connection.release();
+  }
+}));
+
+app.put('/restaurants/:id', auth('admin'), asyncRoute(async (request, response) => {
+  const {
+    name,
+    cuisine,
+    rating = 4.5,
+    minutes = 25,
+    deliveryFee = 40,
+    colorHex = '0xFFFFE7A3',
+    menu,
+  } = request.body;
+  const restaurantId = Number(request.params.id);
+  if (!restaurantId || !name || !cuisine || !Array.isArray(menu) || menu.length === 0) {
+    response.status(400).json({ message: 'Restaurant name, cuisine, and menu are required' });
+    return;
+  }
+
+  const connection = await pool.getConnection();
+  try {
+    await connection.beginTransaction();
+    const [updateResult] = await connection.execute(
+      `UPDATE restaurants
+       SET name = ?, cuisine = ?, rating = ?, minutes = ?, delivery_fee = ?, color_hex = ?
+       WHERE id = ?`,
+      [name, cuisine, rating, minutes, deliveryFee, colorHex, restaurantId],
+    );
+    if (updateResult.affectedRows === 0) {
+      throw new Error('Restaurant not found');
+    }
+
+    await connection.execute(
+      'DELETE FROM restaurant_menu_items WHERE restaurant_id = ?',
+      [restaurantId],
+    );
+    await insertMenuItems(connection, restaurantId, menu);
+
+    await connection.commit();
+    const restaurants = await readRestaurants();
+    const restaurant = restaurants.find((entry) => entry.id === restaurantId);
+    response.json({ restaurant });
+  } catch (error) {
+    await connection.rollback();
+    response.status(400).json({ message: error.message });
+  } finally {
+    connection.release();
+  }
 }));
 
 app.post('/orders', auth('customer'), asyncRoute(async (request, response) => {

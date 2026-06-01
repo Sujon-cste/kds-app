@@ -65,6 +65,7 @@ class KdsApp extends StatelessWidget {
 
 class Restaurant {
   const Restaurant({
+    required this.id,
     required this.name,
     required this.cuisine,
     required this.rating,
@@ -76,6 +77,7 @@ class Restaurant {
     this.favorite = false,
   });
 
+  final int id;
   final String name;
   final String cuisine;
   final double rating;
@@ -85,6 +87,27 @@ class Restaurant {
   final List<MenuItem> menu;
   final bool approved;
   final bool favorite;
+
+  factory Restaurant.fromJson(Map<String, dynamic> json) {
+    return Restaurant(
+      id: json['id'] as int,
+      name: json['name'] as String,
+      cuisine: json['cuisine'] as String,
+      rating: (json['rating'] as num).toDouble(),
+      minutes: json['minutes'] as int,
+      deliveryFee: json['deliveryFee'] as int,
+      color: _colorFromHex(json['colorHex'] as String?),
+      approved: json['approved'] as bool? ?? true,
+      menu: (json['menu'] as List<dynamic>)
+          .map((item) => MenuItem.fromJson(item as Map<String, dynamic>))
+          .toList(),
+    );
+  }
+
+  static Color _colorFromHex(String? rawColor) {
+    final value = int.tryParse((rawColor ?? '0xFFFFE7A3').replaceFirst('#', '0xFF'));
+    return Color(value ?? 0xFFFFE7A3);
+  }
 }
 
 class MenuItem {
@@ -297,6 +320,76 @@ class ApiService {
     );
   }
 
+  static Future<List<Restaurant>> fetchRestaurants() async {
+    final response = await _getJson('/restaurants');
+    if (response.statusCode >= 400) {
+      throw Exception(_messageFrom(response));
+    }
+
+    final decoded = jsonDecode(response.body) as Map<String, dynamic>;
+    return (decoded['restaurants'] as List<dynamic>)
+        .map((restaurant) => Restaurant.fromJson(restaurant as Map<String, dynamic>))
+        .toList();
+  }
+
+  static Future<Restaurant> createRestaurant({
+    required AuthSession session,
+    required String name,
+    required String cuisine,
+    required List<MenuItem> menu,
+    int minutes = 25,
+    int deliveryFee = 40,
+  }) async {
+    final response = await _postJson(
+      '/restaurants',
+      {
+        'name': name,
+        'cuisine': cuisine,
+        'minutes': minutes,
+        'deliveryFee': deliveryFee,
+        'menu': menu.map((item) => item.toJson()).toList(),
+      },
+      token: session.token,
+    );
+    if (response.statusCode >= 400) {
+      throw Exception(_messageFrom(response));
+    }
+
+    final decoded = jsonDecode(response.body) as Map<String, dynamic>;
+    return Restaurant.fromJson(decoded['restaurant'] as Map<String, dynamic>);
+  }
+
+  static Future<Restaurant> updateRestaurant({
+    required AuthSession session,
+    required Restaurant restaurant,
+    required String name,
+    required String cuisine,
+    required List<MenuItem> menu,
+    required int minutes,
+    required int deliveryFee,
+  }) async {
+    final response = await _putJson(
+      '/restaurants/${restaurant.id}',
+      {
+        'name': name,
+        'cuisine': cuisine,
+        'rating': restaurant.rating,
+        'minutes': minutes,
+        'deliveryFee': deliveryFee,
+        'colorHex':
+            '0x${restaurant.color.toARGB32().toRadixString(16).padLeft(8, '0').toUpperCase()}',
+        'menu': menu.map((item) => item.toJson()).toList(),
+      },
+      token: session.token,
+    );
+    if (response.statusCode >= 400) {
+      throw Exception(_messageFrom(response));
+    }
+
+    final decoded = jsonDecode(response.body) as Map<String, dynamic>;
+    return Restaurant.fromJson(decoded['restaurant'] as Map<String, dynamic>);
+  }
+
   static Future<CustomerOrder> createOrder({
     required AuthSession session,
     required String restaurantName,
@@ -423,6 +516,25 @@ class ApiService {
     }
   }
 
+  static Future<http.Response> _putJson(
+    String path,
+    Map<String, Object?> body, {
+    String? token,
+  }) async {
+    try {
+      return await http.put(
+        Uri.parse('$baseUrl$path'),
+        headers: {
+          'Content-Type': 'application/json',
+          if (token != null) 'Authorization': 'Bearer $token',
+        },
+        body: jsonEncode(body),
+      );
+    } catch (_) {
+      throw Exception('KDS server is offline. Start the backend API and try again.');
+    }
+  }
+
   static String _messageFrom(http.Response response) {
     try {
       final decoded = jsonDecode(response.body) as Map<String, dynamic>;
@@ -433,93 +545,8 @@ class ApiService {
   }
 }
 
-const restaurants = <Restaurant>[
-  Restaurant(
-    name: 'Khilkhet Biryani House',
-    cuisine: 'Bangla, Biryani',
-    rating: 4.7,
-    minutes: 24,
-    deliveryFee: 40,
-    color: Color(0xFFFFE7A3),
-    favorite: true,
-    menu: [
-      MenuItem(
-        name: 'Chicken Biryani',
-        description: 'Aromatic rice, tender chicken, salad',
-        price: 180,
-        tag: 'Popular',
-      ),
-      MenuItem(
-        name: 'Beef Tehari',
-        description: 'Classic Dhaka tehari with mustard oil',
-        price: 220,
-        tag: 'Local',
-      ),
-      MenuItem(
-        name: 'Borhani',
-        description: 'Chilled spiced yogurt drink',
-        price: 45,
-        tag: 'Drink',
-      ),
-    ],
-  ),
-  Restaurant(
-    name: 'Airport Thai & Fast Food',
-    cuisine: 'Thai, Chinese',
-    rating: 4.5,
-    minutes: 28,
-    deliveryFee: 40,
-    color: Color(0xFFFFC8B8),
-    menu: [
-      MenuItem(
-        name: 'Chicken Fried Rice',
-        description: 'Egg, vegetables, chicken and house sauce',
-        price: 170,
-        tag: 'Combo',
-      ),
-      MenuItem(
-        name: 'Thai Soup',
-        description: 'Warm soup with chicken and prawns',
-        price: 140,
-        tag: 'Hot',
-      ),
-      MenuItem(
-        name: 'Wonton',
-        description: 'Crispy wonton with chili dip',
-        price: 130,
-        tag: 'Snack',
-      ),
-    ],
-  ),
-  Restaurant(
-    name: 'Nikunj Burger Point',
-    cuisine: 'Burger, Fried Chicken',
-    rating: 4.4,
-    minutes: 19,
-    deliveryFee: 40,
-    color: Color(0xFFD9F99D),
-    menu: [
-      MenuItem(
-        name: 'Smoky Chicken Burger',
-        description: 'Grilled patty, cheese, house sauce',
-        price: 210,
-        tag: 'New',
-      ),
-      MenuItem(
-        name: 'Crispy Wings',
-        description: 'Six pieces with garlic mayo',
-        price: 240,
-        tag: 'Crispy',
-      ),
-      MenuItem(
-        name: 'French Fries',
-        description: 'Salted fries with ketchup',
-        price: 90,
-        tag: 'Side',
-      ),
-    ],
-  ),
-];
+final kdsRestaurants = <Restaurant>[];
+
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -657,43 +684,56 @@ class _LoginScreenState extends State<LoginScreen> {
                             });
                           },
                   ),
-                  AnimatedSwitcher(
-                    duration: const Duration(milliseconds: 180),
-                    child: signUpMode
-                        ? Padding(
-                            key: const ValueKey('name-field'),
-                            padding: const EdgeInsets.only(top: 16),
-                            child: TextField(
-                              controller: nameController,
-                              textInputAction: TextInputAction.next,
-                              decoration: const InputDecoration(
-                                labelText: 'Full name',
-                                border: OutlineInputBorder(
-                                  borderRadius: BorderRadius.all(Radius.circular(16)),
-                                ),
-                              ),
-                            ),
-                          )
-                        : const SizedBox(height: 16),
-                  ),
+                  const SizedBox(height: 18),
+                  if (signUpMode) ...[
+                    TextField(
+                      controller: nameController,
+                      textInputAction: TextInputAction.next,
+                      decoration: const InputDecoration(
+                        labelText: 'Full name',
+                        floatingLabelBehavior: FloatingLabelBehavior.always,
+                        isDense: false,
+                        contentPadding: EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 18,
+                        ),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.all(Radius.circular(16)),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 14),
+                  ],
                   TextField(
                     controller: phoneController,
                     keyboardType: TextInputType.phone,
                     textInputAction: TextInputAction.next,
                     decoration: const InputDecoration(
                       labelText: 'Phone number',
+                      floatingLabelBehavior: FloatingLabelBehavior.always,
                       prefixText: '+88 ',
+                      isDense: false,
+                      contentPadding: EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 18,
+                      ),
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.all(Radius.circular(16)),
                       ),
                     ),
                   ),
-                  const SizedBox(height: 16),
+                  const SizedBox(height: 14),
                   TextField(
                     controller: passwordController,
                     obscureText: true,
                     decoration: const InputDecoration(
                       labelText: 'Password',
+                      floatingLabelBehavior: FloatingLabelBehavior.always,
+                      isDense: false,
+                      contentPadding: EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 18,
+                      ),
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.all(Radius.circular(16)),
                       ),
@@ -754,6 +794,7 @@ class _ShellScreenState extends State<ShellScreen> {
   Restaurant? selectedRestaurant;
   final cart = <CartLine>[];
   final orders = kdsOrders;
+  final restaurants = kdsRestaurants;
   bool ordersLoaded = false;
 
   int get cartItemCount => cart.fold(0, (sum, line) => sum + line.quantity);
@@ -766,19 +807,28 @@ class _ShellScreenState extends State<ShellScreen> {
 
   Future<void> loadOrders() async {
     try {
+      final savedRestaurants = await ApiService.fetchRestaurants();
       if (widget.session.role == UserRole.admin) {
         final savedOrders = await ApiService.fetchOrders(widget.session);
         if (!mounted) {
           return;
         }
         setState(() {
+          restaurants
+            ..clear()
+            ..addAll(savedRestaurants);
           orders
             ..clear()
             ..addAll(savedOrders);
           ordersLoaded = true;
         });
       } else {
-        setState(() => ordersLoaded = true);
+        setState(() {
+          restaurants
+            ..clear()
+            ..addAll(savedRestaurants);
+          ordersLoaded = true;
+        });
       }
     } catch (error) {
       if (!mounted) {
@@ -894,15 +944,29 @@ class _ShellScreenState extends State<ShellScreen> {
 
     if (widget.session.role == UserRole.admin) {
       return AdminScreen(
+        session: widget.session,
         orders: orders,
+        restaurants: restaurants,
         onUpdateOrder: updateOrder,
         onLogout: logout,
+        onRestaurantCreated: (restaurant) {
+          setState(() => restaurants.insert(0, restaurant));
+        },
+        onRestaurantUpdated: (restaurant) {
+          setState(() {
+            final index = restaurants.indexWhere((entry) => entry.id == restaurant.id);
+            if (index >= 0) {
+              restaurants[index] = restaurant;
+            }
+          });
+        },
       );
     }
 
     final pages = [
       selectedRestaurant == null
           ? HomeScreen(
+              restaurants: restaurants,
               onAdd: addToCart,
               onOpenRestaurant: (restaurant) {
                 setState(() => selectedRestaurant = restaurant);
@@ -915,6 +979,7 @@ class _ShellScreenState extends State<ShellScreen> {
               onBack: () => setState(() => selectedRestaurant = null),
             ),
       SearchScreen(
+        restaurants: restaurants,
         onAdd: addToCart,
         onOpenRestaurant: (restaurant) {
           setState(() {
@@ -986,11 +1051,13 @@ class _ShellScreenState extends State<ShellScreen> {
 class HomeScreen extends StatelessWidget {
   const HomeScreen({
     super.key,
+    required this.restaurants,
     required this.onAdd,
     required this.onOpenRestaurant,
     required this.onLogout,
   });
 
+  final List<Restaurant> restaurants;
   final ValueChanged<MenuItem> onAdd;
   final ValueChanged<Restaurant> onOpenRestaurant;
   final VoidCallback onLogout;
@@ -1028,14 +1095,21 @@ class HomeScreen extends StatelessWidget {
             style: TextStyle(fontSize: 22, fontWeight: FontWeight.w900),
           ),
           const SizedBox(height: 12),
-          for (final restaurant in restaurants) ...[
-            RestaurantCard(
-              restaurant: restaurant,
-              onAdd: onAdd,
-              onOpen: onOpenRestaurant,
-            ),
-            const SizedBox(height: 12),
-          ],
+          if (restaurants.isEmpty)
+            const _InfoStrip(
+              icon: Icons.storefront,
+              title: 'No restaurants yet',
+              subtitle: 'Admin can upload restaurants from the admin panel.',
+            )
+          else
+            for (final restaurant in restaurants) ...[
+              RestaurantCard(
+                restaurant: restaurant,
+                onAdd: onAdd,
+                onOpen: onOpenRestaurant,
+              ),
+              const SizedBox(height: 12),
+            ],
         ],
       ),
     );
@@ -1265,10 +1339,12 @@ class MenuItemTile extends StatelessWidget {
 class SearchScreen extends StatefulWidget {
   const SearchScreen({
     super.key,
+    required this.restaurants,
     required this.onAdd,
     required this.onOpenRestaurant,
   });
 
+  final List<Restaurant> restaurants;
   final ValueChanged<MenuItem> onAdd;
   final ValueChanged<Restaurant> onOpenRestaurant;
 
@@ -1282,7 +1358,7 @@ class _SearchScreenState extends State<SearchScreen> {
   @override
   Widget build(BuildContext context) {
     final lower = query.toLowerCase();
-    final results = restaurants.where((restaurant) {
+    final results = widget.restaurants.where((restaurant) {
       final menuMatch = restaurant.menu.any(
         (item) => item.name.toLowerCase().contains(lower),
       );
@@ -1779,15 +1855,23 @@ class _TrackingScreenState extends State<TrackingScreen> {
 class AdminScreen extends StatelessWidget {
   const AdminScreen({
     super.key,
+    required this.session,
     required this.orders,
+    required this.restaurants,
     required this.onUpdateOrder,
     required this.onLogout,
+    required this.onRestaurantCreated,
+    required this.onRestaurantUpdated,
   });
 
+  final AuthSession session;
   final List<CustomerOrder> orders;
+  final List<Restaurant> restaurants;
   final Future<void> Function(CustomerOrder order, OrderStatus status, {String? riderName})
       onUpdateOrder;
   final VoidCallback onLogout;
+  final ValueChanged<Restaurant> onRestaurantCreated;
+  final ValueChanged<Restaurant> onRestaurantUpdated;
 
   @override
   Widget build(BuildContext context) {
@@ -1808,6 +1892,19 @@ class AdminScreen extends StatelessWidget {
       appBar: AppBar(
         title: const Text('Admin'),
         actions: [
+          IconButton(
+            tooltip: 'Add restaurant',
+            onPressed: () {
+              showDialog<void>(
+                context: context,
+                builder: (_) => RestaurantFormDialog(
+                  session: session,
+                  onSaved: onRestaurantCreated,
+                ),
+              );
+            },
+            icon: const Icon(Icons.add_business),
+          ),
           Padding(
             padding: const EdgeInsets.only(right: 16),
             child: Chip(
@@ -1859,6 +1956,36 @@ class AdminScreen extends StatelessWidget {
               ),
             ],
           ),
+          const SizedBox(height: 18),
+          _InfoStrip(
+            icon: Icons.storefront,
+            title: 'Restaurants uploaded',
+            subtitle: '${restaurants.length} active restaurant${restaurants.length == 1 ? '' : 's'} available to customers.',
+          ),
+          const SizedBox(height: 12),
+          if (restaurants.isEmpty)
+            const _InfoStrip(
+              icon: Icons.add_business,
+              title: 'No restaurants uploaded',
+              subtitle: 'Use the add restaurant button to publish your first restaurant.',
+            )
+          else
+            for (final restaurant in restaurants) ...[
+              _AdminRestaurantTile(
+                restaurant: restaurant,
+                onEdit: () {
+                  showDialog<void>(
+                    context: context,
+                    builder: (_) => RestaurantFormDialog(
+                      session: session,
+                      restaurant: restaurant,
+                      onSaved: onRestaurantUpdated,
+                    ),
+                  );
+                },
+              ),
+              const SizedBox(height: 10),
+            ],
           const SizedBox(height: 18),
           const _InfoStrip(
             icon: Icons.chat_bubble_rounded,
@@ -1930,6 +2057,345 @@ class _BadgeIcon extends StatelessWidget {
   }
 }
 
+class _AdminRestaurantTile extends StatelessWidget {
+  const _AdminRestaurantTile({
+    required this.restaurant,
+    required this.onEdit,
+  });
+
+  final Restaurant restaurant;
+  final VoidCallback onEdit;
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: ListTile(
+        leading: CircleAvatar(
+          backgroundColor: restaurant.color,
+          child: const Icon(Icons.storefront, color: kdsInk),
+        ),
+        title: Text(restaurant.name, style: const TextStyle(fontWeight: FontWeight.w900)),
+        subtitle: Text('${restaurant.cuisine} • ${restaurant.menu.length} menu items'),
+        trailing: IconButton(
+          tooltip: 'Edit restaurant',
+          onPressed: onEdit,
+          icon: const Icon(Icons.edit),
+        ),
+      ),
+    );
+  }
+}
+
+class RestaurantFormDialog extends StatefulWidget {
+  const RestaurantFormDialog({
+    super.key,
+    required this.session,
+    required this.onSaved,
+    this.restaurant,
+  });
+
+  final AuthSession session;
+  final ValueChanged<Restaurant> onSaved;
+  final Restaurant? restaurant;
+
+  @override
+  State<RestaurantFormDialog> createState() => _RestaurantFormDialogState();
+}
+
+class _RestaurantFormDialogState extends State<RestaurantFormDialog> {
+  final nameController = TextEditingController();
+  final cuisineController = TextEditingController();
+  final minutesController = TextEditingController(text: '25');
+  final feeController = TextEditingController(text: '40');
+  final menuRows = <MenuItemFormRow>[];
+  bool saving = false;
+  String? errorMessage;
+
+  bool get isEditing => widget.restaurant != null;
+
+  @override
+  void initState() {
+    super.initState();
+    final restaurant = widget.restaurant;
+    if (restaurant != null) {
+      nameController.text = restaurant.name;
+      cuisineController.text = restaurant.cuisine;
+      minutesController.text = '${restaurant.minutes}';
+      feeController.text = '${restaurant.deliveryFee}';
+      menuRows.addAll(restaurant.menu.map(MenuItemFormRow.fromItem));
+    } else {
+      menuRows.add(MenuItemFormRow());
+    }
+  }
+
+  @override
+  void dispose() {
+    nameController.dispose();
+    cuisineController.dispose();
+    minutesController.dispose();
+    feeController.dispose();
+    for (final row in menuRows) {
+      row.dispose();
+    }
+    super.dispose();
+  }
+
+  Future<void> save() async {
+    setState(() {
+      saving = true;
+      errorMessage = null;
+    });
+
+    try {
+      final menu = menuRows.map((row) => row.toMenuItem()).toList();
+      final restaurant = isEditing
+          ? await ApiService.updateRestaurant(
+              session: widget.session,
+              restaurant: widget.restaurant!,
+              name: nameController.text.trim(),
+              cuisine: cuisineController.text.trim(),
+              minutes: int.tryParse(minutesController.text) ?? 25,
+              deliveryFee: int.tryParse(feeController.text) ?? 40,
+              menu: menu,
+            )
+          : await ApiService.createRestaurant(
+              session: widget.session,
+              name: nameController.text.trim(),
+              cuisine: cuisineController.text.trim(),
+              minutes: int.tryParse(minutesController.text) ?? 25,
+              deliveryFee: int.tryParse(feeController.text) ?? 40,
+              menu: menu,
+            );
+      if (!mounted) {
+        return;
+      }
+      widget.onSaved(restaurant);
+      Navigator.of(context).pop();
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+      setState(() => errorMessage = error.toString().replaceFirst('Exception: ', ''));
+    } finally {
+      if (mounted) {
+        setState(() => saving = false);
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: Text(isEditing ? 'Edit restaurant' : 'Add restaurant'),
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _DialogField(controller: nameController, label: 'Restaurant name'),
+            const SizedBox(height: 12),
+            _DialogField(controller: cuisineController, label: 'Cuisine'),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(
+                  child: _DialogField(
+                    controller: minutesController,
+                    label: 'Minutes',
+                    keyboardType: TextInputType.number,
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: _DialogField(
+                    controller: feeController,
+                    label: 'Delivery fee',
+                    keyboardType: TextInputType.number,
+                  ),
+                ),
+              ],
+            ),
+            const Divider(height: 28),
+            Row(
+              children: [
+                const Expanded(
+                  child: Text(
+                    'Menu items',
+                    style: TextStyle(fontWeight: FontWeight.w900),
+                  ),
+                ),
+                IconButton.filledTonal(
+                  tooltip: 'Add menu item',
+                  onPressed: () => setState(() => menuRows.add(MenuItemFormRow())),
+                  icon: const Icon(Icons.add),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            for (var i = 0; i < menuRows.length; i++) ...[
+              _MenuItemEditor(
+                row: menuRows[i],
+                index: i,
+                canRemove: menuRows.length > 1,
+                onRemove: () {
+                  setState(() {
+                    final row = menuRows.removeAt(i);
+                    row.dispose();
+                  });
+                },
+              ),
+              const SizedBox(height: 12),
+            ],
+            if (errorMessage != null) ...[
+              const SizedBox(height: 12),
+              Text(errorMessage!, style: const TextStyle(color: kdsRedOrange)),
+            ],
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: saving ? null : () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          onPressed: saving ? null : save,
+          child: Text(saving ? 'Saving...' : (isEditing ? 'Update' : 'Save')),
+        ),
+      ],
+    );
+  }
+}
+
+class MenuItemFormRow {
+  MenuItemFormRow({
+    String name = '',
+    String description = '',
+    String price = '',
+    String tag = 'Popular',
+  })  : nameController = TextEditingController(text: name),
+        descriptionController = TextEditingController(text: description),
+        priceController = TextEditingController(text: price),
+        tagController = TextEditingController(text: tag);
+
+  factory MenuItemFormRow.fromItem(MenuItem item) {
+    return MenuItemFormRow(
+      name: item.name,
+      description: item.description,
+      price: '${item.price}',
+      tag: item.tag,
+    );
+  }
+
+  final TextEditingController nameController;
+  final TextEditingController descriptionController;
+  final TextEditingController priceController;
+  final TextEditingController tagController;
+
+  MenuItem toMenuItem() {
+    return MenuItem(
+      name: nameController.text.trim(),
+      description: descriptionController.text.trim(),
+      price: int.tryParse(priceController.text) ?? 0,
+      tag: tagController.text.trim().isEmpty ? 'Item' : tagController.text.trim(),
+    );
+  }
+
+  void dispose() {
+    nameController.dispose();
+    descriptionController.dispose();
+    priceController.dispose();
+    tagController.dispose();
+  }
+}
+
+class _MenuItemEditor extends StatelessWidget {
+  const _MenuItemEditor({
+    required this.row,
+    required this.index,
+    required this.canRemove,
+    required this.onRemove,
+  });
+
+  final MenuItemFormRow row;
+  final int index;
+  final bool canRemove;
+  final VoidCallback onRemove;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.black.withValues(alpha: .04),
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Column(
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  'Item ${index + 1}',
+                  style: const TextStyle(fontWeight: FontWeight.w900),
+                ),
+              ),
+              IconButton(
+                tooltip: 'Remove item',
+                onPressed: canRemove ? onRemove : null,
+                icon: const Icon(Icons.delete_outline),
+              ),
+            ],
+          ),
+          _DialogField(controller: row.nameController, label: 'Item name'),
+          const SizedBox(height: 10),
+          _DialogField(controller: row.descriptionController, label: 'Description'),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              Expanded(
+                child: _DialogField(
+                  controller: row.priceController,
+                  label: 'Price',
+                  keyboardType: TextInputType.number,
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(child: _DialogField(controller: row.tagController, label: 'Tag')),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _DialogField extends StatelessWidget {
+  const _DialogField({
+    required this.controller,
+    required this.label,
+    this.keyboardType,
+  });
+
+  final TextEditingController controller;
+  final String label;
+  final TextInputType? keyboardType;
+
+  @override
+  Widget build(BuildContext context) {
+    return TextField(
+      controller: controller,
+      keyboardType: keyboardType,
+      decoration: InputDecoration(
+        labelText: label,
+        floatingLabelBehavior: FloatingLabelBehavior.always,
+        border: const OutlineInputBorder(
+          borderRadius: BorderRadius.all(Radius.circular(14)),
+        ),
+      ),
+    );
+  }
+}
+
 class _AdminOrderCard extends StatelessWidget {
   const _AdminOrderCard({
     required this.order,
@@ -1976,13 +2442,21 @@ class _AdminOrderCard extends StatelessWidget {
                 padding: const EdgeInsets.only(bottom: 6),
                 child: Row(
                   children: [
-                    Expanded(child: Text('${line.quantity} x ${line.item.name}')),
+                    Expanded(
+                      child: Text(
+                        '${line.quantity} x ${line.item.name}  •  Tk ${line.item.price} each',
+                      ),
+                    ),
                     Text('Tk ${line.item.price * line.quantity}'),
                   ],
                 ),
               ),
             const Divider(height: 24),
-            _AmountRow(label: 'Order total', amount: order.total, bold: true),
+            _AmountRow(label: 'Items subtotal', amount: order.subtotal),
+            const SizedBox(height: 6),
+            _AmountRow(label: 'Delivery fee', amount: order.deliveryFee),
+            const SizedBox(height: 8),
+            _AmountRow(label: 'Total', amount: order.total, bold: true),
             if (order.riderName != null) ...[
               const SizedBox(height: 8),
               _Pill(icon: Icons.delivery_dining, text: order.riderName!),
