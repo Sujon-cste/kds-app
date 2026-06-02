@@ -47,6 +47,10 @@ For web build:
 flutter build web --dart-define=KDS_API_BASE_URL=http://127.0.0.1:4000
 ```
 
+## Deploy
+
+For AWS deployment, use the EC2/RDS guide in [DEPLOY_AWS.md](/home/sujon/kds-app/DEPLOY_AWS.md).
+
 ## Login
 
 - Users do not choose a role in the app.
