@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 
@@ -273,10 +274,22 @@ class AuthSession {
 }
 
 class ApiService {
-  static const baseUrl = String.fromEnvironment(
-    'KDS_API_BASE_URL',
-    defaultValue: 'http://127.0.0.1:4000',
-  );
+  static final String baseUrl = (() {
+    const envBaseUrl = String.fromEnvironment('KDS_API_BASE_URL');
+    if (envBaseUrl.isNotEmpty) {
+      return envBaseUrl;
+    }
+
+    if (kIsWeb) {
+      return '/api';
+    }
+
+    if (kReleaseMode) {
+      return 'http://47.128.78.122:4000';
+    }
+
+    return 'http://127.0.0.1:4000';
+  })();
 
   static Future<AuthSession> signIn({
     required String phone,
