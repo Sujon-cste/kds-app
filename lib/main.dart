@@ -15,6 +15,88 @@ const kdsInk = Color(0xFF232323);
 const kdsMuted = Color(0xFF71717A);
 const kdsSurface = Color(0xFFFFFBF0);
 
+class KdsLogo extends StatelessWidget {
+  const KdsLogo({
+    super.key,
+    this.size = 72,
+    this.radius = 24,
+    this.showShadow = true,
+  });
+
+  final double size;
+  final double radius;
+  final bool showShadow;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(radius),
+        boxShadow: showShadow
+            ? [
+                BoxShadow(
+                  color: kdsRedOrange.withValues(alpha: .18),
+                  blurRadius: 24,
+                  offset: const Offset(0, 12),
+                ),
+              ]
+            : null,
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(radius),
+        child: Image.asset(
+          'kds-logo.jpeg',
+          fit: BoxFit.cover,
+        ),
+      ),
+    );
+  }
+}
+
+class KdsAppBarBrand extends StatelessWidget {
+  const KdsAppBarBrand({
+    super.key,
+    required this.title,
+    this.subtitle,
+  });
+
+  final String title;
+  final String? subtitle;
+
+  @override
+  Widget build(BuildContext context) {
+    final titleStyle = Theme.of(context).textTheme.titleMedium?.copyWith(
+          fontWeight: FontWeight.w900,
+          color: kdsInk,
+        );
+    final subtitleStyle = Theme.of(context).textTheme.labelSmall?.copyWith(
+          color: kdsMuted,
+        );
+
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        const KdsLogo(size: 34, radius: 12, showShadow: false),
+        const SizedBox(width: 10),
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (subtitle != null) ...[
+              Text(subtitle!, style: subtitleStyle),
+              const SizedBox(height: 1),
+            ],
+            Text(title, style: titleStyle),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
 class KdsApp extends StatelessWidget {
   const KdsApp({super.key});
 
@@ -281,14 +363,20 @@ class ApiService {
     }
 
     if (kIsWeb) {
-      return '/api';
+      if (kReleaseMode) {
+        return '/api';
+      }
+
+     // return 'http://127.0.0.1:4000';
+ return 'http://47.128.78.122:4000';
     }
 
     if (kReleaseMode) {
       return 'http://47.128.78.122/api';
     }
 
-    return 'http://127.0.0.1:4000';
+   // return 'http://127.0.0.1:4000';
+ return 'http://47.128.78.122:4000';
   })();
 
   static Future<AuthSession> signIn({
@@ -629,31 +717,7 @@ class _LoginScreenState extends State<LoginScreen> {
           padding: const EdgeInsets.all(24),
           children: [
             const SizedBox(height: 28),
-            Container(
-              width: 72,
-              height: 72,
-              decoration: BoxDecoration(
-                color: kdsYellow,
-                borderRadius: BorderRadius.circular(24),
-                boxShadow: [
-                  BoxShadow(
-                    color: kdsRedOrange.withValues(alpha: .18),
-                    blurRadius: 24,
-                    offset: const Offset(0, 12),
-                  ),
-                ],
-              ),
-              child: const Center(
-                child: Text(
-                  'KDS',
-                  style: TextStyle(
-                    fontSize: 22,
-                    fontWeight: FontWeight.w900,
-                    color: kdsInk,
-                  ),
-                ),
-              ),
-            ),
+            const KdsLogo(),
             const SizedBox(height: 28),
             const Text(
               'Welcome to KDS',
@@ -1079,12 +1143,9 @@ class HomeScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('Deliver to', style: TextStyle(fontSize: 12, color: kdsMuted)),
-            Text('Khilkhet, Dhaka', style: TextStyle(fontWeight: FontWeight.w800)),
-          ],
+        title: const KdsAppBarBrand(
+          title: 'Khilkhet, Dhaka',
+          subtitle: 'Deliver to',
         ),
         actions: [
           IconButton(
@@ -1242,7 +1303,7 @@ class RestaurantScreen extends StatelessWidget {
           onPressed: onBack,
           icon: const Icon(Icons.arrow_back),
         ),
-        title: Text(restaurant.name),
+        title: KdsAppBarBrand(title: restaurant.name),
       ),
       body: ListView(
         padding: const EdgeInsets.all(16),
@@ -1381,7 +1442,7 @@ class _SearchScreenState extends State<SearchScreen> {
     }).toList();
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Search')),
+      appBar: AppBar(title: const KdsAppBarBrand(title: 'Search')),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
@@ -1431,7 +1492,7 @@ class CartScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Cart')),
+      appBar: AppBar(title: const KdsAppBarBrand(title: 'Cart')),
       body: cart.isEmpty
           ? const Center(
               child: Text(
@@ -1566,7 +1627,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Profile'),
+        title: const KdsAppBarBrand(title: 'Profile'),
         actions: [
           IconButton(
             tooltip: 'Refresh',
@@ -1593,8 +1654,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 children: [
                   const CircleAvatar(
                     radius: 28,
-                    backgroundColor: kdsYellow,
-                    child: Icon(Icons.person, color: kdsInk),
+                    backgroundColor: Colors.white,
+                    backgroundImage: AssetImage('kds-logo.jpeg'),
                   ),
                   const SizedBox(width: 14),
                   Expanded(
@@ -1802,7 +1863,7 @@ class _TrackingScreenState extends State<TrackingScreen> {
     ];
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Order tracking')),
+      appBar: AppBar(title: const KdsAppBarBrand(title: 'Order tracking')),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
@@ -1903,7 +1964,7 @@ class AdminScreen extends StatelessWidget {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Admin'),
+        title: const KdsAppBarBrand(title: 'Admin'),
         actions: [
           IconButton(
             tooltip: 'Add restaurant',
@@ -1921,7 +1982,10 @@ class AdminScreen extends StatelessWidget {
           Padding(
             padding: const EdgeInsets.only(right: 16),
             child: Chip(
-              avatar: const Icon(Icons.notifications_active, size: 18),
+              avatar: const CircleAvatar(
+                backgroundColor: Colors.white,
+                backgroundImage: AssetImage('kds-logo.jpeg'),
+              ),
               label: Text('$pendingCount new'),
               backgroundColor: pendingCount > 0
                   ? kdsYellow.withValues(alpha: .75)

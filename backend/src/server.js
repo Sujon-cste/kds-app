@@ -9,6 +9,7 @@ dotenv.config();
 
 const app = express();
 const port = Number(process.env.PORT || 4000);
+const host = process.env.HOST || '0.0.0.0';
 const jwtSecret = process.env.JWT_SECRET || 'dev-secret';
 
 const pool = mysql.createPool({
@@ -53,6 +54,14 @@ function publicUser(user) {
     name: user.name,
     phone: user.phone,
     role: user.role,
+  };
+}
+
+function healthPayload() {
+  return {
+    ok: true,
+    uptime: process.uptime(),
+    timestamp: new Date().toISOString(),
   };
 }
 
@@ -220,10 +229,13 @@ async function insertMenuItems(connection, restaurantId, menu) {
   }
 }
 
-app.get('/health', asyncRoute(async (request, response) => {
-  await pool.query('SELECT 1');
-  response.json({ ok: true });
-}));
+app.get(['/health', '/api/health'], (request, response) => {
+  response.json(healthPayload());
+});
+
+app.get('/api', (request, response) => {
+  response.json(healthPayload());
+});
 
 app.post('/auth/signup', asyncRoute(async (request, response) => {
   const phone = normalizePhone(request.body.phone);
@@ -492,6 +504,6 @@ app.use((error, request, response, next) => {
   response.status(500).json({ message: error.message });
 });
 
-app.listen(port, () => {
-  console.log(`KDS API running on http://127.0.0.1:${port}`);
+app.listen(port, host, () => {
+  console.log(`KDS API running on http://${host}:${port}`);
 });
