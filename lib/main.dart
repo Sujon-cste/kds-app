@@ -285,7 +285,7 @@ class ApiService {
     }
 
     if (kReleaseMode) {
-      return 'http://47.128.78.122:4000';
+      return 'http://47.128.78.122/api';
     }
 
     return 'http://127.0.0.1:4000';
