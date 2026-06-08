@@ -23,6 +23,8 @@ flutter:
   uses-material-design: true
   assets:
     - kds-logo.jpeg
+    - kds-logo-safe.png
+    - kds-logo-tight.png
 
 flutter_launcher_icons:
   android: true
@@ -36,18 +38,18 @@ flutter_launcher_icons:
     icon_size: 48
   web:
     generate: true
-    image_path: "kds-logo.jpeg"
+    image_path: "kds-logo-safe.png"
     background_color: "#ffffff"
     theme_color: "#ffffff"
-  image_path: "kds-logo.jpeg"
+  image_path: "kds-logo-safe.png"
   adaptive_icon_background: "#ffffff"
-  adaptive_icon_foreground: "kds-logo.jpeg"
+  adaptive_icon_foreground: "kds-logo-safe.png"
   remove_alpha_ios: true
 
 flutter_native_splash:
   color: "#ffffff"
-  image: kds-logo.jpeg
+  image: kds-logo-safe.png
   android_12:
     color: "#ffffff"
-    image: kds-logo.jpeg
+    image: kds-logo-safe.png
     icon_background_color: "#ffffff"

@@ -21,11 +21,15 @@ class KdsLogo extends StatelessWidget {
     this.size = 72,
     this.radius = 24,
     this.showShadow = true,
+    this.assetPath = 'kds-logo-safe.png',
+    this.padding = const EdgeInsets.all(8),
   });
 
   final double size;
   final double radius;
   final bool showShadow;
+  final String assetPath;
+  final EdgeInsetsGeometry padding;
 
   @override
   Widget build(BuildContext context) {
@@ -47,9 +51,12 @@ class KdsLogo extends StatelessWidget {
       ),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(radius),
-        child: Image.asset(
-          'kds-logo.jpeg',
-          fit: BoxFit.cover,
+        child: Padding(
+          padding: padding,
+          child: Image.asset(
+            assetPath,
+            fit: BoxFit.contain,
+          ),
         ),
       ),
     );
@@ -79,7 +86,12 @@ class KdsAppBarBrand extends StatelessWidget {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        const KdsLogo(size: 34, radius: 12, showShadow: false),
+        const KdsLogo(
+          size: 34,
+          radius: 12,
+          showShadow: false,
+          padding: EdgeInsets.all(4),
+        ),
         const SizedBox(width: 10),
         Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -717,7 +729,13 @@ class _LoginScreenState extends State<LoginScreen> {
           padding: const EdgeInsets.all(24),
           children: [
             const SizedBox(height: 28),
-            const KdsLogo(),
+            Center(
+              child: Image.asset(
+                'kds-logo-tight.png',
+                width: 240,
+                fit: BoxFit.contain,
+              ),
+            ),
             const SizedBox(height: 28),
             const Text(
               'Welcome to KDS',
