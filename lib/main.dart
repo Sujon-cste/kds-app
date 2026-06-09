@@ -1896,18 +1896,31 @@ class RestaurantScreen extends StatelessWidget {
             style: TextStyle(fontSize: 22, fontWeight: FontWeight.w900),
           ),
           const SizedBox(height: 12),
-          for (final item in restaurant.menu
-              .where((item) => item.category == selectedCategory)) ...[
-            MenuItemTile(item: item, onAdd: onAdd),
-            const SizedBox(height: 10),
-          ],
-          if (restaurant.menu
-              .every((item) => item.category != selectedCategory))
+          if (restaurant.menu.isNotEmpty &&
+              restaurant.menu.any((item) => item.category == selectedCategory))
+            for (final item in restaurant.menu
+                .where((item) => item.category == selectedCategory)) ...[
+              MenuItemTile(item: item, onAdd: onAdd),
+              const SizedBox(height: 10),
+            ]
+          else if (restaurant.menu.isNotEmpty) ...[
+            const _InfoStrip(
+              icon: Icons.category_outlined,
+              title: 'No items in this category',
+              subtitle: 'Showing all menu items for this restaurant instead.',
+            ),
+            const SizedBox(height: 12),
+            for (final item in restaurant.menu) ...[
+              MenuItemTile(item: item, onAdd: onAdd),
+              const SizedBox(height: 10),
+            ],
+          ] else ...[
             const _InfoStrip(
               icon: Icons.info_outline,
-              title: 'No items in this category',
-              subtitle: 'Try another category from the home page.',
+              title: 'No menu items',
+              subtitle: 'This restaurant has no published menu items yet.',
             ),
+          ],
         ],
       ),
     );
