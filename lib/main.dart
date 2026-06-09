@@ -140,101 +140,115 @@ class CategoryHeroCard extends StatelessWidget {
     final accent = menuCategoryColor(category);
     final icon = menuCategoryIcon(category);
 
-    return Container(
-      height: 156,
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(26),
-        gradient: LinearGradient(
-          colors: [
-            accent.withValues(alpha: .90),
-            accent.withValues(alpha: .45),
-            Colors.white,
-          ],
-          stops: const [0.0, 0.7, 1.0],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: accent.withValues(alpha: .22),
-            blurRadius: 24,
-            offset: const Offset(0, 12),
+    return AnimatedSwitcher(
+      duration: const Duration(milliseconds: 280),
+      switchInCurve: Curves.easeOutBack,
+      switchOutCurve: Curves.easeInCubic,
+      transitionBuilder: (child, animation) {
+        final fade = CurvedAnimation(parent: animation, curve: Curves.easeOut);
+        final scale = Tween<double>(begin: .96, end: 1).animate(fade);
+        return FadeTransition(
+          opacity: fade,
+          child: ScaleTransition(scale: scale, child: child),
+        );
+      },
+      child: Container(
+        key: ValueKey(category),
+        height: 156,
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(26),
+          gradient: LinearGradient(
+            colors: [
+              accent.withValues(alpha: .90),
+              accent.withValues(alpha: .45),
+              Colors.white,
+            ],
+            stops: const [0.0, 0.7, 1.0],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
           ),
-        ],
-      ),
-      child: Stack(
-        children: [
-          Positioned(
-            right: -12,
-            bottom: -12,
-            child: Icon(
-              icon,
-              size: 126,
-              color: Colors.white.withValues(alpha: .28),
+          boxShadow: [
+            BoxShadow(
+              color: accent.withValues(alpha: .22),
+              blurRadius: 24,
+              offset: const Offset(0, 12),
             ),
-          ),
-          Positioned(
-            left: 18,
-            top: 18,
-            right: 18,
-            bottom: 18,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                  decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: .22),
-                    borderRadius: BorderRadius.circular(999),
-                    border: Border.all(
-                      color: Colors.white.withValues(alpha: .35),
+          ],
+        ),
+        child: Stack(
+          children: [
+            Positioned(
+              right: -12,
+              bottom: -12,
+              child: Icon(
+                icon,
+                size: 126,
+                color: Colors.white.withValues(alpha: .28),
+              ),
+            ),
+            Positioned(
+              left: 18,
+              top: 18,
+              right: 18,
+              bottom: 18,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: .22),
+                      borderRadius: BorderRadius.circular(999),
+                      border: Border.all(
+                        color: Colors.white.withValues(alpha: .35),
+                      ),
                     ),
-                  ),
-                  child: Text(
-                    '${menuCategoryLabel(category)} category',
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                ),
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      title,
+                    child: Text(
+                      '${menuCategoryLabel(category)} category',
                       style: const TextStyle(
                         color: Colors.white,
-                        fontSize: 22,
-                        fontWeight: FontWeight.w900,
-                      ),
-                    ),
-                    const SizedBox(height: 6),
-                    Text(
-                      subtitle,
-                      style: TextStyle(
-                        color: Colors.white.withValues(alpha: .92),
-                        fontSize: 14,
-                        height: 1.35,
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    Text(
-                      '$itemCount item${itemCount == 1 ? '' : 's'}',
-                      style: TextStyle(
-                        color: Colors.white.withValues(alpha: .95),
                         fontWeight: FontWeight.w800,
                       ),
                     ),
-                  ],
-                ),
-              ],
+                  ),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        title,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 22,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        subtitle,
+                        style: TextStyle(
+                          color: Colors.white.withValues(alpha: .92),
+                          fontSize: 14,
+                          height: 1.35,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      Text(
+                        '$itemCount item${itemCount == 1 ? '' : 's'}',
+                        style: TextStyle(
+                          color: Colors.white.withValues(alpha: .95),
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -1698,7 +1712,6 @@ class _ShellScreenState extends State<ShellScreen> {
               onAdd: addToCart,
               onBack: () => setState(() => selectedRestaurant = null),
               selectedCategory: selectedCategory,
-              onCategorySelected: selectCategory,
             ),
       SearchScreen(
         restaurants: restaurants,
@@ -1835,6 +1848,20 @@ class HomeScreen extends StatelessWidget {
           MenuCategoryTabs(
             selectedCategory: selectedCategory,
             onCategorySelected: onCategorySelected,
+          ),
+          const SizedBox(height: 14),
+          CategoryHeroCard(
+            category: selectedCategory,
+            title: menuCategoryLabel(selectedCategory),
+            subtitle: menuCategoryBlurb(selectedCategory),
+            itemCount: restaurants.fold<int>(
+              0,
+              (sum, restaurant) =>
+                  sum +
+                  restaurant.menu
+                      .where((item) => item.category == selectedCategory)
+                      .length,
+            ),
           ),
           const SizedBox(height: 16),
           const Text(
@@ -1980,14 +2007,12 @@ class RestaurantScreen extends StatelessWidget {
     required this.onAdd,
     required this.onBack,
     required this.selectedCategory,
-    required this.onCategorySelected,
   });
 
   final Restaurant restaurant;
   final MenuItemAction onAdd;
   final VoidCallback onBack;
   final String selectedCategory;
-  final ValueChanged<String> onCategorySelected;
 
   @override
   Widget build(BuildContext context) {
@@ -2002,20 +2027,6 @@ class RestaurantScreen extends StatelessWidget {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          MenuCategoryTabs(
-            selectedCategory: selectedCategory,
-            onCategorySelected: onCategorySelected,
-          ),
-          const SizedBox(height: 14),
-          CategoryHeroCard(
-            category: selectedCategory,
-            title: menuCategoryLabel(selectedCategory),
-            subtitle: menuCategoryBlurb(selectedCategory),
-            itemCount: restaurant.menu
-                .where((item) => item.category == selectedCategory)
-                .length,
-          ),
-          const SizedBox(height: 18),
           Text(
             restaurant.cuisine,
             style: const TextStyle(color: kdsMuted, fontSize: 16),
@@ -2179,6 +2190,20 @@ class _SearchScreenState extends State<SearchScreen> {
           MenuCategoryTabs(
             selectedCategory: widget.selectedCategory,
             onCategorySelected: widget.onCategorySelected,
+          ),
+          const SizedBox(height: 14),
+          CategoryHeroCard(
+            category: widget.selectedCategory,
+            title: menuCategoryLabel(widget.selectedCategory),
+            subtitle: menuCategoryBlurb(widget.selectedCategory),
+            itemCount: widget.restaurants.fold<int>(
+              0,
+              (sum, restaurant) =>
+                  sum +
+                  restaurant.menu
+                      .where((item) => item.category == widget.selectedCategory)
+                      .length,
+            ),
           ),
           const SizedBox(height: 16),
           TextField(
