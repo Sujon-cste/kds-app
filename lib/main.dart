@@ -45,6 +45,32 @@ IconData menuCategoryIcon(String value) {
   }
 }
 
+Color menuCategoryColor(String value) {
+  switch (value) {
+    case 'food':
+      return kdsYellow;
+    case 'medicine':
+      return const Color(0xFF7CDBB3);
+    case 'others':
+      return const Color(0xFFB9A7FF);
+    default:
+      return kdsYellow;
+  }
+}
+
+String menuCategoryBlurb(String value) {
+  switch (value) {
+    case 'food':
+      return 'Fresh meals, snacks, and daily favorites.';
+    case 'medicine':
+      return 'Health essentials and quick pharmacy picks.';
+    case 'others':
+      return 'Useful extras and everything in between.';
+    default:
+      return 'Browse available items in this category.';
+  }
+}
+
 class MenuCategoryTabs extends StatelessWidget {
   const MenuCategoryTabs({
     super.key,
@@ -89,6 +115,125 @@ class MenuCategoryTabs extends StatelessWidget {
                 onTap: () => onCategorySelected(category),
               ),
             ),
+        ],
+      ),
+    );
+  }
+}
+
+class CategoryHeroCard extends StatelessWidget {
+  const CategoryHeroCard({
+    super.key,
+    required this.category,
+    required this.title,
+    required this.subtitle,
+    required this.itemCount,
+  });
+
+  final String category;
+  final String title;
+  final String subtitle;
+  final int itemCount;
+
+  @override
+  Widget build(BuildContext context) {
+    final accent = menuCategoryColor(category);
+    final icon = menuCategoryIcon(category);
+
+    return Container(
+      height: 156,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(26),
+        gradient: LinearGradient(
+          colors: [
+            accent.withValues(alpha: .90),
+            accent.withValues(alpha: .45),
+            Colors.white,
+          ],
+          stops: const [0.0, 0.7, 1.0],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: accent.withValues(alpha: .22),
+            blurRadius: 24,
+            offset: const Offset(0, 12),
+          ),
+        ],
+      ),
+      child: Stack(
+        children: [
+          Positioned(
+            right: -12,
+            bottom: -12,
+            child: Icon(
+              icon,
+              size: 126,
+              color: Colors.white.withValues(alpha: .28),
+            ),
+          ),
+          Positioned(
+            left: 18,
+            top: 18,
+            right: 18,
+            bottom: 18,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: .22),
+                    borderRadius: BorderRadius.circular(999),
+                    border: Border.all(
+                      color: Colors.white.withValues(alpha: .35),
+                    ),
+                  ),
+                  child: Text(
+                    '${menuCategoryLabel(category)} category',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      title,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 22,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      subtitle,
+                      style: TextStyle(
+                        color: Colors.white.withValues(alpha: .92),
+                        fontSize: 14,
+                        height: 1.35,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    Text(
+                      '$itemCount item${itemCount == 1 ? '' : 's'}',
+                      style: TextStyle(
+                        color: Colors.white.withValues(alpha: .95),
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
         ],
       ),
     );
@@ -1862,15 +2007,13 @@ class RestaurantScreen extends StatelessWidget {
             onCategorySelected: onCategorySelected,
           ),
           const SizedBox(height: 14),
-          Container(
-            height: 150,
-            decoration: BoxDecoration(
-              color: restaurant.color,
-              borderRadius: BorderRadius.circular(24),
-            ),
-            child: const Center(
-              child: Icon(Icons.local_dining_rounded, size: 72, color: kdsInk),
-            ),
+          CategoryHeroCard(
+            category: selectedCategory,
+            title: menuCategoryLabel(selectedCategory),
+            subtitle: menuCategoryBlurb(selectedCategory),
+            itemCount: restaurant.menu
+                .where((item) => item.category == selectedCategory)
+                .length,
           ),
           const SizedBox(height: 18),
           Text(
