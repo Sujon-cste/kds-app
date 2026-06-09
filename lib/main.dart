@@ -152,6 +152,7 @@ class CategoryHeroCard extends StatelessWidget {
       },
       child: Container(
         key: ValueKey(category),
+        width: double.infinity,
         height: 136,
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(26),
