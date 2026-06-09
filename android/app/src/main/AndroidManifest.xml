@@ -1,5 +1,8 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
-    <uses-permission android:name="android.permission.INTERNET"/>
+    <!-- 1. Required: Allows the app to open network sockets -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <!-- 2. Recommended: Allows the app to check if a connection is active -->
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
 
     <application
         android:usesCleartextTraffic="true"

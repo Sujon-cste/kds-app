@@ -22,6 +22,8 @@ const pool = mysql.createPool({
   connectionLimit: 10,
 });
 
+const menuCategories = new Set(['food', 'medicine', 'others']);
+
 app.use(cors());
 app.use(express.json({ limit: '1mb' }));
 
@@ -33,6 +35,11 @@ function asyncRoute(handler) {
 
 function normalizePhone(phone) {
   return String(phone || '').replace(/[^\d+]/g, '');
+}
+
+function normalizeMenuCategory(category) {
+  const normalized = String(category || 'food').trim().toLowerCase();
+  return menuCategories.has(normalized) ? normalized : 'food';
 }
 
 function signToken(user) {
@@ -175,6 +182,7 @@ function mapRestaurant(row, items) {
       description: item.description,
       price: item.price,
       tag: item.tag,
+      category: item.category,
     })),
   };
 }
@@ -214,16 +222,18 @@ async function insertMenuItems(connection, restaurantId, menu) {
     if (!item.name || !item.description || !item.price) {
       throw new Error('Every menu item needs name, description, and price');
     }
+    const category = normalizeMenuCategory(item.category || item.tag);
     await connection.execute(
       `INSERT INTO restaurant_menu_items
-       (restaurant_id, name, description, price, tag)
-       VALUES (?, ?, ?, ?, ?)`,
+       (restaurant_id, name, description, price, tag, category)
+       VALUES (?, ?, ?, ?, ?, ?)`,
       [
         restaurantId,
         item.name,
         item.description,
         Number(item.price),
         item.tag || 'Item',
+        category,
       ],
     );
   }

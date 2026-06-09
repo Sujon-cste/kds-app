@@ -15,6 +15,23 @@ const kdsInk = Color(0xFF232323);
 const kdsMuted = Color(0xFF71717A);
 const kdsSurface = Color(0xFFFFFBF0);
 
+typedef MenuItemAction = Future<void> Function(MenuItem item);
+
+const menuCategories = ['food', 'medicine', 'others'];
+
+String menuCategoryLabel(String value) {
+  switch (value) {
+    case 'food':
+      return 'Food';
+    case 'medicine':
+      return 'Medicine';
+    case 'others':
+      return 'Others';
+    default:
+      return value;
+  }
+}
+
 class KdsLogo extends StatelessWidget {
   const KdsLogo({
     super.key,
@@ -153,7 +170,7 @@ class KdsApp extends StatelessWidget {
           ),
         ),
       ),
-      home: const LoginScreen(),
+      home: const ShellScreen(session: null),
     );
   }
 }
@@ -211,12 +228,14 @@ class MenuItem {
     required this.description,
     required this.price,
     required this.tag,
+    required this.category,
   });
 
   final String name;
   final String description;
   final int price;
   final String tag;
+  final String category;
 
   Map<String, Object> toJson() {
     return {
@@ -224,15 +243,21 @@ class MenuItem {
       'description': description,
       'price': price,
       'tag': tag,
+      'category': category,
     };
   }
 
   factory MenuItem.fromJson(Map<String, dynamic> json) {
+    final rawCategory = (json['category'] as String? ?? '').trim().toLowerCase();
+    final rawTag = (json['tag'] as String? ?? '').trim().toLowerCase();
     return MenuItem(
       name: json['name'] as String,
       description: json['description'] as String,
       price: json['price'] as int,
       tag: json['tag'] as String,
+      category: menuCategories.contains(rawCategory)
+          ? rawCategory
+          : (menuCategories.contains(rawTag) ? rawTag : 'food'),
     );
   }
 }
@@ -384,11 +409,12 @@ class ApiService {
     }
 
     if (kReleaseMode) {
-      return 'http://47.128.78.122/api';
+      // return 'http://47.128.78.122/api';
+      return 'http://47.128.78.122:4000';
     }
 
-   // return 'http://127.0.0.1:4000';
- return 'http://47.128.78.122:4000';
+    // return 'http://127.0.0.1:4000';
+    return 'http://47.128.78.122:4000';
   })();
 
   static Future<AuthSession> signIn({
@@ -875,10 +901,241 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 }
 
+class _AuthSheet extends StatefulWidget {
+  const _AuthSheet();
+
+  @override
+  State<_AuthSheet> createState() => _AuthSheetState();
+}
+
+class _AuthSheetState extends State<_AuthSheet> {
+  final nameController = TextEditingController(text: 'KDS Customer');
+  final phoneController = TextEditingController(text: '01700000000');
+  final passwordController = TextEditingController(text: 'admin123');
+  bool signUpMode = false;
+  bool submitting = false;
+  String? errorMessage;
+
+  @override
+  void dispose() {
+    nameController.dispose();
+    phoneController.dispose();
+    passwordController.dispose();
+    super.dispose();
+  }
+
+  Future<void> submit() async {
+    setState(() {
+      submitting = true;
+      errorMessage = null;
+    });
+
+    try {
+      final session = signUpMode
+          ? await ApiService.signUp(
+              name: nameController.text,
+              phone: phoneController.text,
+              password: passwordController.text,
+            )
+          : await ApiService.signIn(
+              phone: phoneController.text,
+              password: passwordController.text,
+            );
+      if (!mounted) {
+        return;
+      }
+      Navigator.of(context).pop(session);
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+      setState(() => errorMessage = error.toString().replaceFirst('Exception: ', ''));
+    } finally {
+      if (mounted) {
+        setState(() => submitting = false);
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedPadding(
+      duration: const Duration(milliseconds: 150),
+      padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+      child: Container(
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+        ),
+        child: SafeArea(
+          top: false,
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Center(
+                  child: Container(
+                    width: 44,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: Colors.black.withValues(alpha: .12),
+                      borderRadius: BorderRadius.circular(99),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 18),
+                const Center(
+                  child: KdsLogo(
+                    size: 84,
+                    radius: 26,
+                    showShadow: false,
+                    assetPath: 'kds-logo-tight.png',
+                    padding: EdgeInsets.zero,
+                  ),
+                ),
+                const SizedBox(height: 18),
+                const Text(
+                  'Sign in to order',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(fontSize: 24, fontWeight: FontWeight.w900, color: kdsInk),
+                ),
+                const SizedBox(height: 8),
+                const Text(
+                  'Browse first, then sign in or sign up when you add items to your cart.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: kdsMuted, height: 1.4),
+                ),
+                const SizedBox(height: 20),
+                _Panel(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      SegmentedButton<bool>(
+                        segments: const [
+                          ButtonSegment(
+                            value: false,
+                            icon: Icon(Icons.login),
+                            label: Text('Sign in'),
+                          ),
+                          ButtonSegment(
+                            value: true,
+                            icon: Icon(Icons.person_add),
+                            label: Text('Sign up'),
+                          ),
+                        ],
+                        selected: {signUpMode},
+                        onSelectionChanged: submitting
+                            ? null
+                            : (selection) {
+                                setState(() {
+                                  signUpMode = selection.first;
+                                  errorMessage = null;
+                                });
+                              },
+                      ),
+                      const SizedBox(height: 18),
+                      if (signUpMode) ...[
+                        TextField(
+                          controller: nameController,
+                          textInputAction: TextInputAction.next,
+                          decoration: const InputDecoration(
+                            labelText: 'Full name',
+                            floatingLabelBehavior: FloatingLabelBehavior.always,
+                            isDense: false,
+                            contentPadding: EdgeInsets.symmetric(
+                              horizontal: 16,
+                              vertical: 18,
+                            ),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.all(Radius.circular(16)),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 14),
+                      ],
+                      TextField(
+                        controller: phoneController,
+                        keyboardType: TextInputType.phone,
+                        textInputAction: TextInputAction.next,
+                        decoration: const InputDecoration(
+                          labelText: 'Phone number',
+                          floatingLabelBehavior: FloatingLabelBehavior.always,
+                          prefixText: '+88 ',
+                          isDense: false,
+                          contentPadding: EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 18,
+                          ),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.all(Radius.circular(16)),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 14),
+                      TextField(
+                        controller: passwordController,
+                        obscureText: true,
+                        decoration: const InputDecoration(
+                          labelText: 'Password',
+                          floatingLabelBehavior: FloatingLabelBehavior.always,
+                          isDense: false,
+                          contentPadding: EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 18,
+                          ),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.all(Radius.circular(16)),
+                          ),
+                        ),
+                      ),
+                      if (!signUpMode) ...[
+                        const SizedBox(height: 12),
+                        const _InfoStrip(
+                          icon: Icons.admin_panel_settings,
+                          title: 'Admin demo',
+                          subtitle: '01700000000 / admin123 opens the admin panel.',
+                        ),
+                      ],
+                      if (errorMessage != null) ...[
+                        const SizedBox(height: 12),
+                        Text(
+                          errorMessage!,
+                          style: const TextStyle(
+                            color: kdsRedOrange,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ],
+                      const SizedBox(height: 16),
+                      FilledButton(
+                        onPressed: submitting ? null : submit,
+                        child: Text(
+                          submitting ? 'Please wait...' : (signUpMode ? 'Create account' : 'Sign in'),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 16),
+                TextButton(
+                  onPressed: submitting ? null : () => Navigator.of(context).pop(),
+                  child: const Text('Cancel'),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class ShellScreen extends StatefulWidget {
   const ShellScreen({super.key, required this.session});
 
-  final AuthSession session;
+  final AuthSession? session;
 
   @override
   State<ShellScreen> createState() => _ShellScreenState();
@@ -891,20 +1148,23 @@ class _ShellScreenState extends State<ShellScreen> {
   final orders = kdsOrders;
   final restaurants = kdsRestaurants;
   bool ordersLoaded = false;
+  AuthSession? session;
+  String selectedCategory = 'food';
 
   int get cartItemCount => cart.fold(0, (sum, line) => sum + line.quantity);
 
   @override
   void initState() {
     super.initState();
+    session = widget.session;
     loadOrders();
   }
 
   Future<void> loadOrders() async {
     try {
       final savedRestaurants = await ApiService.fetchRestaurants();
-      if (widget.session.role == UserRole.admin) {
-        final savedOrders = await ApiService.fetchOrders(widget.session);
+      if (session?.role == UserRole.admin) {
+        final savedOrders = await ApiService.fetchOrders(session!);
         if (!mounted) {
           return;
         }
@@ -939,7 +1199,53 @@ class _ShellScreenState extends State<ShellScreen> {
     }
   }
 
-  void addToCart(MenuItem item) {
+  Future<AuthSession?> promptAuth() {
+    return showModalBottomSheet<AuthSession>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => const _AuthSheet(),
+    );
+  }
+
+  Future<AuthSession?> requestAuth() async {
+    final auth = await promptAuth();
+    if (auth == null) {
+      return null;
+    }
+    await applySession(auth);
+    return auth;
+  }
+
+  Future<void> applySession(AuthSession nextSession) async {
+    setState(() {
+      session = nextSession;
+      index = 0;
+      selectedRestaurant = null;
+      cart.clear();
+      ordersLoaded = nextSession.role != UserRole.admin;
+      if (nextSession.role != UserRole.admin) {
+        orders.clear();
+      }
+    });
+
+    if (nextSession.role == UserRole.admin) {
+      await loadOrders();
+    }
+  }
+
+  Future<void> addToCart(MenuItem item) async {
+    if (session == null || session!.role != UserRole.customer) {
+      final auth = await requestAuth();
+      if (auth == null) {
+        return;
+      }
+      if (!mounted || session?.role != UserRole.customer) {
+        return;
+      }
+    }
+
     final existing = cart.where((line) => line.item.name == item.name).toList();
     setState(() {
       if (existing.isEmpty) {
@@ -956,14 +1262,35 @@ class _ShellScreenState extends State<ShellScreen> {
     );
   }
 
+  void selectCategory(String category) {
+    setState(() {
+      selectedCategory = category;
+      selectedRestaurant = null;
+    });
+  }
+
   void logout() {
-    Navigator.of(context).pushAndRemoveUntil(
-      MaterialPageRoute(builder: (_) => const LoginScreen()),
-      (route) => false,
-    );
+    setState(() {
+      session = null;
+      cart.clear();
+      orders.clear();
+      index = 0;
+      selectedRestaurant = null;
+      ordersLoaded = true;
+    });
   }
 
   Future<CustomerOrder?> placeOrder() async {
+    if (session == null || session!.role != UserRole.customer) {
+      final auth = await requestAuth();
+      if (auth == null) {
+        return null;
+      }
+      if (!mounted || session?.role != UserRole.customer) {
+        return null;
+      }
+    }
+
     final subtotal = cart.fold(0, (sum, line) => sum + line.item.price * line.quantity);
     final restaurantName = restaurants
         .firstWhere(
@@ -977,7 +1304,7 @@ class _ShellScreenState extends State<ShellScreen> {
 
     try {
       final order = await ApiService.createOrder(
-        session: widget.session,
+        session: session!,
         restaurantName: restaurantName,
         lines: orderLines,
         subtotal: subtotal,
@@ -1016,7 +1343,7 @@ class _ShellScreenState extends State<ShellScreen> {
 
   Future<void> updateOrder(CustomerOrder order, OrderStatus status, {String? riderName}) async {
     final updatedOrder = await ApiService.updateOrderStatus(
-      session: widget.session,
+      session: session!,
       order: order,
       status: status,
       riderName: riderName,
@@ -1037,9 +1364,9 @@ class _ShellScreenState extends State<ShellScreen> {
       );
     }
 
-    if (widget.session.role == UserRole.admin) {
+    if (session?.role == UserRole.admin) {
       return AdminScreen(
-        session: widget.session,
+        session: session!,
         orders: orders,
         restaurants: restaurants,
         onUpdateOrder: updateOrder,
@@ -1066,12 +1393,17 @@ class _ShellScreenState extends State<ShellScreen> {
               onOpenRestaurant: (restaurant) {
                 setState(() => selectedRestaurant = restaurant);
               },
+              session: session,
+              onAuthRequested: requestAuth,
               onLogout: logout,
+              selectedCategory: selectedCategory,
+              onCategorySelected: selectCategory,
             )
           : RestaurantScreen(
               restaurant: selectedRestaurant!,
               onAdd: addToCart,
               onBack: () => setState(() => selectedRestaurant = null),
+              selectedCategory: selectedCategory,
             ),
       SearchScreen(
         restaurants: restaurants,
@@ -1082,16 +1414,20 @@ class _ShellScreenState extends State<ShellScreen> {
             index = 0;
           });
         },
+        selectedCategory: selectedCategory,
+        onCategorySelected: selectCategory,
       ),
       CartScreen(
-        session: widget.session,
+        session: session,
         cart: cart,
         onChanged: () => setState(() {}),
         onPlaceOrder: placeOrder,
+        onAuthRequested: requestAuth,
       ),
       ProfileScreen(
-        session: widget.session,
+        session: session,
         onLogout: logout,
+        onAuthRequested: requestAuth,
       ),
     ];
 
@@ -1149,16 +1485,28 @@ class HomeScreen extends StatelessWidget {
     required this.restaurants,
     required this.onAdd,
     required this.onOpenRestaurant,
+    required this.session,
+    required this.onAuthRequested,
     required this.onLogout,
+    required this.selectedCategory,
+    required this.onCategorySelected,
   });
 
   final List<Restaurant> restaurants;
-  final ValueChanged<MenuItem> onAdd;
+  final MenuItemAction onAdd;
   final ValueChanged<Restaurant> onOpenRestaurant;
+  final AuthSession? session;
+  final Future<AuthSession?> Function() onAuthRequested;
   final VoidCallback onLogout;
+  final String selectedCategory;
+  final ValueChanged<String> onCategorySelected;
 
   @override
   Widget build(BuildContext context) {
+    final filteredRestaurants = restaurants.where(
+      (restaurant) => restaurant.menu.any((item) => item.category == selectedCategory),
+    ).toList();
+
     return Scaffold(
       appBar: AppBar(
         title: const KdsAppBarBrand(
@@ -1171,9 +1519,13 @@ class HomeScreen extends StatelessWidget {
             icon: const Icon(Icons.favorite_rounded, color: kdsRedOrange),
           ),
           IconButton(
-            tooltip: 'Logout',
-            onPressed: onLogout,
-            icon: const Icon(Icons.logout),
+            tooltip: session == null ? 'Sign in or sign up' : 'Logout',
+            onPressed: session == null
+                ? () {
+                    onAuthRequested();
+                  }
+                : onLogout,
+            icon: Icon(session == null ? Icons.login : Icons.logout),
           ),
         ],
       ),
@@ -1182,6 +1534,29 @@ class HomeScreen extends StatelessWidget {
         children: [
           const _PromoBanner(),
           const SizedBox(height: 18),
+          Row(
+            children: [
+              for (final category in menuCategories) ...[
+                Expanded(
+                  child: Padding(
+                    padding: EdgeInsets.only(right: category == menuCategories.last ? 0 : 8),
+                    child: ChoiceChip(
+                      label: Text(menuCategoryLabel(category)),
+                      selected: selectedCategory == category,
+                      onSelected: (_) => onCategorySelected(category),
+                      selectedColor: kdsYellow.withValues(alpha: .8),
+                      backgroundColor: Colors.white,
+                      labelStyle: TextStyle(
+                        fontWeight: FontWeight.w700,
+                        color: selectedCategory == category ? kdsInk : kdsMuted,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ],
+          ),
+          const SizedBox(height: 16),
           const Text(
             'Nearby restaurants',
             style: TextStyle(fontSize: 22, fontWeight: FontWeight.w900),
@@ -1193,12 +1568,19 @@ class HomeScreen extends StatelessWidget {
               title: 'No restaurants yet',
               subtitle: 'Admin can upload restaurants from the admin panel.',
             )
+          else if (filteredRestaurants.isEmpty)
+            const _InfoStrip(
+              icon: Icons.info_outline,
+              title: 'No items in this category',
+              subtitle: 'Try another category or add items from the admin panel.',
+            )
           else
-            for (final restaurant in restaurants) ...[
+            for (final restaurant in filteredRestaurants) ...[
               RestaurantCard(
                 restaurant: restaurant,
                 onAdd: onAdd,
                 onOpen: onOpenRestaurant,
+                category: selectedCategory,
               ),
               const SizedBox(height: 12),
             ],
@@ -1214,11 +1596,13 @@ class RestaurantCard extends StatelessWidget {
     required this.restaurant,
     required this.onAdd,
     required this.onOpen,
+    required this.category,
   });
 
   final Restaurant restaurant;
-  final ValueChanged<MenuItem> onAdd;
+  final MenuItemAction onAdd;
   final ValueChanged<Restaurant> onOpen;
+  final String category;
 
   @override
   Widget build(BuildContext context) {
@@ -1279,7 +1663,7 @@ class RestaurantCard extends StatelessWidget {
                       spacing: 8,
                       runSpacing: 8,
                       children: [
-                        _Pill(icon: Icons.star, text: '${restaurant.rating}'),
+                        _Pill(icon: Icons.category_rounded, text: menuCategoryLabel(category)),
                         _Pill(
                           icon: Icons.schedule,
                           text: '${restaurant.minutes} min',
@@ -1287,6 +1671,11 @@ class RestaurantCard extends StatelessWidget {
                         _Pill(
                           icon: Icons.delivery_dining,
                           text: 'Tk ${restaurant.deliveryFee}',
+                        ),
+                        _Pill(
+                          icon: Icons.restaurant_menu,
+                          text:
+                              '${restaurant.menu.where((item) => item.category == category).length} items',
                         ),
                       ],
                     ),
@@ -1307,11 +1696,13 @@ class RestaurantScreen extends StatelessWidget {
     required this.restaurant,
     required this.onAdd,
     required this.onBack,
+    required this.selectedCategory,
   });
 
   final Restaurant restaurant;
-  final ValueChanged<MenuItem> onAdd;
+  final MenuItemAction onAdd;
   final VoidCallback onBack;
+  final String selectedCategory;
 
   @override
   Widget build(BuildContext context) {
@@ -1326,6 +1717,13 @@ class RestaurantScreen extends StatelessWidget {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
+          ChoiceChip(
+            label: Text(menuCategoryLabel(selectedCategory)),
+            selected: true,
+            onSelected: null,
+            selectedColor: kdsYellow.withValues(alpha: .8),
+          ),
+          const SizedBox(height: 14),
           Container(
             height: 150,
             decoration: BoxDecoration(
@@ -1360,10 +1758,16 @@ class RestaurantScreen extends StatelessWidget {
             style: TextStyle(fontSize: 22, fontWeight: FontWeight.w900),
           ),
           const SizedBox(height: 12),
-          for (final item in restaurant.menu) ...[
+          for (final item in restaurant.menu.where((item) => item.category == selectedCategory)) ...[
             MenuItemTile(item: item, onAdd: onAdd),
             const SizedBox(height: 10),
           ],
+          if (restaurant.menu.every((item) => item.category != selectedCategory))
+            const _InfoStrip(
+              icon: Icons.info_outline,
+              title: 'No items in this category',
+              subtitle: 'Try another category from the home page.',
+            ),
         ],
       ),
     );
@@ -1374,7 +1778,7 @@ class MenuItemTile extends StatelessWidget {
   const MenuItemTile({super.key, required this.item, required this.onAdd});
 
   final MenuItem item;
-  final ValueChanged<MenuItem> onAdd;
+  final MenuItemAction onAdd;
 
   @override
   Widget build(BuildContext context) {
@@ -1434,11 +1838,15 @@ class SearchScreen extends StatefulWidget {
     required this.restaurants,
     required this.onAdd,
     required this.onOpenRestaurant,
+    required this.selectedCategory,
+    required this.onCategorySelected,
   });
 
   final List<Restaurant> restaurants;
-  final ValueChanged<MenuItem> onAdd;
+  final MenuItemAction onAdd;
   final ValueChanged<Restaurant> onOpenRestaurant;
+  final String selectedCategory;
+  final ValueChanged<String> onCategorySelected;
 
   @override
   State<SearchScreen> createState() => _SearchScreenState();
@@ -1458,12 +1866,36 @@ class _SearchScreenState extends State<SearchScreen> {
           restaurant.cuisine.toLowerCase().contains(lower) ||
           menuMatch;
     }).toList();
+    final filteredResults = results.where(
+      (restaurant) => restaurant.menu.any(
+        (item) => item.category == widget.selectedCategory,
+      ),
+    ).toList();
 
     return Scaffold(
       appBar: AppBar(title: const KdsAppBarBrand(title: 'Search')),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
+          Row(
+            children: [
+              for (final category in menuCategories) ...[
+                Expanded(
+                  child: Padding(
+                    padding: EdgeInsets.only(right: category == menuCategories.last ? 0 : 8),
+                    child: ChoiceChip(
+                      label: Text(menuCategoryLabel(category)),
+                      selected: widget.selectedCategory == category,
+                      onSelected: (_) => widget.onCategorySelected(category),
+                      selectedColor: kdsYellow.withValues(alpha: .8),
+                      backgroundColor: Colors.white,
+                    ),
+                  ),
+                ),
+              ],
+            ],
+          ),
+          const SizedBox(height: 16),
           TextField(
             onChanged: (value) => setState(() => query = value),
             decoration: const InputDecoration(
@@ -1475,14 +1907,22 @@ class _SearchScreenState extends State<SearchScreen> {
             ),
           ),
           const SizedBox(height: 16),
-          for (final restaurant in results) ...[
-            RestaurantCard(
-              restaurant: restaurant,
-              onAdd: widget.onAdd,
-              onOpen: widget.onOpenRestaurant,
-            ),
-            const SizedBox(height: 12),
-          ],
+          if (filteredResults.isEmpty)
+            const _InfoStrip(
+              icon: Icons.search_off,
+              title: 'No results found',
+              subtitle: 'Try a different search term or menu category.',
+            )
+          else
+            for (final restaurant in filteredResults) ...[
+              RestaurantCard(
+                restaurant: restaurant,
+                onAdd: widget.onAdd,
+                onOpen: widget.onOpenRestaurant,
+                category: widget.selectedCategory,
+              ),
+              const SizedBox(height: 12),
+            ],
         ],
       ),
     );
@@ -1496,12 +1936,14 @@ class CartScreen extends StatelessWidget {
     required this.cart,
     required this.onChanged,
     required this.onPlaceOrder,
+    required this.onAuthRequested,
   });
 
-  final AuthSession session;
+  final AuthSession? session;
   final List<CartLine> cart;
   final VoidCallback onChanged;
   final Future<CustomerOrder?> Function() onPlaceOrder;
+  final Future<AuthSession?> Function() onAuthRequested;
   static const fixedDeliveryFee = 40;
 
   int get subtotal => cart.fold(0, (sum, line) => sum + line.item.price * line.quantity);
@@ -1511,7 +1953,43 @@ class CartScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const KdsAppBarBrand(title: 'Cart')),
-      body: cart.isEmpty
+      body: session == null
+          ? Center(
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: _Panel(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const KdsLogo(size: 96, radius: 28, showShadow: false),
+                      const SizedBox(height: 16),
+                      const Text(
+                        'Sign in to place orders',
+                        style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900),
+                        textAlign: TextAlign.center,
+                      ),
+                      const SizedBox(height: 8),
+                      const Text(
+                        'Browse the menu first, then sign in or create an account when you are ready to add items to your cart.',
+                        style: TextStyle(color: kdsMuted),
+                        textAlign: TextAlign.center,
+                      ),
+                      const SizedBox(height: 16),
+                      FilledButton(
+                        onPressed: () async {
+                          final auth = await onAuthRequested();
+                          if (auth != null && context.mounted) {
+                            onChanged();
+                          }
+                        },
+                        child: const Text('Sign in or sign up'),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            )
+          : cart.isEmpty
           ? const Center(
               child: Text(
                 'Your cart is empty',
@@ -1547,7 +2025,7 @@ class CartScreen extends StatelessWidget {
                           Navigator.of(context).push(
                             MaterialPageRoute(
                               builder: (_) => TrackingScreen(
-                                session: session,
+                                session: session!,
                                 initialOrder: order,
                               ),
                             ),
@@ -1619,26 +2097,43 @@ class ProfileScreen extends StatefulWidget {
     super.key,
     required this.session,
     required this.onLogout,
+    required this.onAuthRequested,
   });
 
-  final AuthSession session;
+  final AuthSession? session;
   final VoidCallback onLogout;
+  final Future<AuthSession?> Function() onAuthRequested;
 
   @override
   State<ProfileScreen> createState() => _ProfileScreenState();
 }
 
 class _ProfileScreenState extends State<ProfileScreen> {
-  late Future<List<CustomerOrder>> ordersFuture;
+  Future<List<CustomerOrder>>? ordersFuture;
 
   @override
   void initState() {
     super.initState();
-    ordersFuture = ApiService.fetchOrders(widget.session);
+    if (widget.session != null) {
+      ordersFuture = ApiService.fetchOrders(widget.session!);
+    }
+  }
+
+  @override
+  void didUpdateWidget(covariant ProfileScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.session != oldWidget.session) {
+      ordersFuture = widget.session == null
+          ? null
+          : ApiService.fetchOrders(widget.session!);
+    }
   }
 
   void refreshOrders() {
-    setState(() => ordersFuture = ApiService.fetchOrders(widget.session));
+    if (widget.session == null) {
+      return;
+    }
+    setState(() => ordersFuture = ApiService.fetchOrders(widget.session!));
   }
 
   @override
@@ -1647,106 +2142,148 @@ class _ProfileScreenState extends State<ProfileScreen> {
       appBar: AppBar(
         title: const KdsAppBarBrand(title: 'Profile'),
         actions: [
+          if (widget.session != null)
+            IconButton(
+              tooltip: 'Refresh',
+              onPressed: refreshOrders,
+              icon: const Icon(Icons.refresh),
+            ),
           IconButton(
-            tooltip: 'Refresh',
-            onPressed: refreshOrders,
-            icon: const Icon(Icons.refresh),
-          ),
-          IconButton(
-            tooltip: 'Logout',
-            onPressed: widget.onLogout,
-            icon: const Icon(Icons.logout),
+            tooltip: widget.session == null ? 'Sign in or sign up' : 'Logout',
+            onPressed: widget.session == null
+                ? () {
+                    widget.onAuthRequested();
+                  }
+                : widget.onLogout,
+            icon: Icon(widget.session == null ? Icons.login : Icons.logout),
           ),
         ],
       ),
-      body: RefreshIndicator(
-        onRefresh: () async {
-          refreshOrders();
-          await ordersFuture;
-        },
-        child: ListView(
-          padding: const EdgeInsets.all(16),
-          children: [
-            _Panel(
-              child: Row(
-                children: [
-                  const CircleAvatar(
-                    radius: 28,
-                    backgroundColor: Colors.white,
-                    backgroundImage: AssetImage('kds-logo.jpeg'),
+      body: widget.session == null
+          ? ListView(
+              padding: const EdgeInsets.all(16),
+              children: [
+                _Panel(
+                  child: Column(
+                    children: [
+                      const KdsLogo(size: 88, radius: 28, showShadow: false),
+                      const SizedBox(height: 16),
+                      const Text(
+                        'Sign in to see your orders',
+                        style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900),
+                        textAlign: TextAlign.center,
+                      ),
+                      const SizedBox(height: 8),
+                      const Text(
+                        'Create an account or sign in to track orders, save your details, and place delivery requests.',
+                        style: TextStyle(color: kdsMuted),
+                        textAlign: TextAlign.center,
+                      ),
+                      const SizedBox(height: 16),
+                      FilledButton(
+                        onPressed: () async {
+                          final auth = await widget.onAuthRequested();
+                          if (auth != null && context.mounted) {
+                            setState(() {
+                              ordersFuture = ApiService.fetchOrders(auth);
+                            });
+                          }
+                        },
+                        child: const Text('Sign in or sign up'),
+                      ),
+                    ],
                   ),
-                  const SizedBox(width: 14),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+                ),
+              ],
+            )
+          : RefreshIndicator(
+              onRefresh: () async {
+                refreshOrders();
+                await ordersFuture!;
+              },
+              child: ListView(
+                padding: const EdgeInsets.all(16),
+                children: [
+                  _Panel(
+                    child: Row(
                       children: [
-                        Text(
-                          widget.session.name,
-                          style: const TextStyle(
-                            fontSize: 20,
-                            fontWeight: FontWeight.w900,
+                        const CircleAvatar(
+                          radius: 28,
+                          backgroundColor: Colors.white,
+                          backgroundImage: AssetImage('kds-logo.jpeg'),
+                        ),
+                        const SizedBox(width: 14),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                widget.session!.name,
+                                style: const TextStyle(
+                                  fontSize: 20,
+                                  fontWeight: FontWeight.w900,
+                                ),
+                              ),
+                              Text(widget.session!.phone, style: const TextStyle(color: kdsMuted)),
+                            ],
                           ),
                         ),
-                        Text(widget.session.phone, style: const TextStyle(color: kdsMuted)),
                       ],
                     ),
+                  ),
+                  const SizedBox(height: 18),
+                  const Text(
+                    'My orders',
+                    style: TextStyle(fontSize: 22, fontWeight: FontWeight.w900),
+                  ),
+                  const SizedBox(height: 12),
+                  FutureBuilder<List<CustomerOrder>>(
+                    future: ordersFuture,
+                    builder: (context, snapshot) {
+                      if (snapshot.connectionState == ConnectionState.waiting) {
+                        return const Padding(
+                          padding: EdgeInsets.all(32),
+                          child: Center(child: CircularProgressIndicator()),
+                        );
+                      }
+                      if (snapshot.hasError) {
+                        return _InfoStrip(
+                          icon: Icons.error_outline,
+                          title: 'Could not load orders',
+                          subtitle: snapshot.error.toString().replaceFirst('Exception: ', ''),
+                        );
+                      }
+
+                      final orders = snapshot.data ?? [];
+                      if (orders.isEmpty) {
+                        return const _EmptyOrdersPanel();
+                      }
+
+                      return Column(
+                        children: [
+                          for (final order in orders) ...[
+                            _MyOrderCard(
+                              order: order,
+                              onTrack: () {
+                                Navigator.of(context).push(
+                                  MaterialPageRoute(
+                                    builder: (_) => TrackingScreen(
+                                      session: widget.session!,
+                                      initialOrder: order,
+                                    ),
+                                  ),
+                                );
+                              },
+                            ),
+                            const SizedBox(height: 12),
+                          ],
+                        ],
+                      );
+                    },
                   ),
                 ],
               ),
             ),
-            const SizedBox(height: 18),
-            const Text(
-              'My orders',
-              style: TextStyle(fontSize: 22, fontWeight: FontWeight.w900),
-            ),
-            const SizedBox(height: 12),
-            FutureBuilder<List<CustomerOrder>>(
-              future: ordersFuture,
-              builder: (context, snapshot) {
-                if (snapshot.connectionState == ConnectionState.waiting) {
-                  return const Padding(
-                    padding: EdgeInsets.all(32),
-                    child: Center(child: CircularProgressIndicator()),
-                  );
-                }
-                if (snapshot.hasError) {
-                  return _InfoStrip(
-                    icon: Icons.error_outline,
-                    title: 'Could not load orders',
-                    subtitle: snapshot.error.toString().replaceFirst('Exception: ', ''),
-                  );
-                }
-
-                final orders = snapshot.data ?? [];
-                if (orders.isEmpty) {
-                  return const _EmptyOrdersPanel();
-                }
-
-                return Column(
-                  children: [
-                    for (final order in orders) ...[
-                      _MyOrderCard(
-                        order: order,
-                        onTrack: () {
-                          Navigator.of(context).push(
-                            MaterialPageRoute(
-                              builder: (_) => TrackingScreen(
-                                session: widget.session,
-                                initialOrder: order,
-                              ),
-                            ),
-                          );
-                        },
-                      ),
-                      const SizedBox(height: 12),
-                    ],
-                  ],
-                );
-              },
-            ),
-          ],
-        ),
-      ),
     );
   }
 }
@@ -2367,10 +2904,12 @@ class MenuItemFormRow {
     String description = '',
     String price = '',
     String tag = 'Popular',
+    String initialCategory = 'food',
   })  : nameController = TextEditingController(text: name),
         descriptionController = TextEditingController(text: description),
         priceController = TextEditingController(text: price),
-        tagController = TextEditingController(text: tag);
+        tagController = TextEditingController(text: tag),
+        category = initialCategory;
 
   factory MenuItemFormRow.fromItem(MenuItem item) {
     return MenuItemFormRow(
@@ -2378,6 +2917,7 @@ class MenuItemFormRow {
       description: item.description,
       price: '${item.price}',
       tag: item.tag,
+      initialCategory: item.category,
     );
   }
 
@@ -2385,6 +2925,7 @@ class MenuItemFormRow {
   final TextEditingController descriptionController;
   final TextEditingController priceController;
   final TextEditingController tagController;
+  String category;
 
   MenuItem toMenuItem() {
     return MenuItem(
@@ -2392,6 +2933,7 @@ class MenuItemFormRow {
       description: descriptionController.text.trim(),
       price: int.tryParse(priceController.text) ?? 0,
       tag: tagController.text.trim().isEmpty ? 'Item' : tagController.text.trim(),
+      category: category,
     );
   }
 
@@ -2455,9 +2997,39 @@ class _MenuItemEditor extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 10),
-              Expanded(child: _DialogField(controller: row.tagController, label: 'Tag')),
             ],
           ),
+          const SizedBox(height: 10),
+          StatefulBuilder(
+            builder: (context, setState) {
+              return DropdownButtonFormField<String>(
+                initialValue: row.category,
+                items: [
+                  for (final category in menuCategories)
+                    DropdownMenuItem(
+                      value: category,
+                      child: Text(menuCategoryLabel(category)),
+                    ),
+                ],
+                onChanged: (value) {
+                  if (value != null) {
+                    setState(() {
+                      row.category = value;
+                    });
+                  }
+                },
+                decoration: const InputDecoration(
+                  labelText: 'Menu category',
+                  floatingLabelBehavior: FloatingLabelBehavior.always,
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.all(Radius.circular(14)),
+                  ),
+                ),
+              );
+            },
+          ),
+          const SizedBox(height: 10),
+          _DialogField(controller: row.tagController, label: 'Tag'),
         ],
       ),
     );
