@@ -32,6 +32,135 @@ String menuCategoryLabel(String value) {
   }
 }
 
+IconData menuCategoryIcon(String value) {
+  switch (value) {
+    case 'food':
+      return Icons.restaurant_rounded;
+    case 'medicine':
+      return Icons.medical_services_rounded;
+    case 'others':
+      return Icons.apps_rounded;
+    default:
+      return Icons.category_rounded;
+  }
+}
+
+class MenuCategoryTabs extends StatelessWidget {
+  const MenuCategoryTabs({
+    super.key,
+    required this.selectedCategory,
+    required this.onCategorySelected,
+  });
+
+  final String selectedCategory;
+  final ValueChanged<String> onCategorySelected;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(6),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(24),
+        gradient: LinearGradient(
+          colors: [
+            Colors.white,
+            kdsYellow.withValues(alpha: .18),
+          ],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        border: Border.all(color: kdsYellow.withValues(alpha: .32)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: .05),
+            blurRadius: 18,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          for (final category in menuCategories)
+            Expanded(
+              child: _MenuCategoryTab(
+                label: menuCategoryLabel(category),
+                icon: menuCategoryIcon(category),
+                selected: selectedCategory == category,
+                onTap: () => onCategorySelected(category),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _MenuCategoryTab extends StatelessWidget {
+  const _MenuCategoryTab({
+    required this.label,
+    required this.icon,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final String label;
+  final IconData icon;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final foreground = selected ? kdsInk : kdsMuted;
+
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 220),
+      curve: Curves.easeOutCubic,
+      margin: const EdgeInsets.symmetric(horizontal: 3),
+      decoration: BoxDecoration(
+        color: selected ? Colors.white : Colors.transparent,
+        borderRadius: BorderRadius.circular(18),
+        boxShadow: selected
+            ? [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: .08),
+                  blurRadius: 14,
+                  offset: const Offset(0, 6),
+                ),
+              ]
+            : null,
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(18),
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 6),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(icon, color: foreground, size: 18),
+                const SizedBox(height: 6),
+                AnimatedDefaultTextStyle(
+                  duration: const Duration(milliseconds: 220),
+                  curve: Curves.easeOutCubic,
+                  style: TextStyle(
+                    color: foreground,
+                    fontWeight: selected ? FontWeight.w900 : FontWeight.w700,
+                    fontSize: 13,
+                  ),
+                  child:
+                      Text(label, maxLines: 1, overflow: TextOverflow.ellipsis),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class KdsLogo extends StatelessWidget {
   const KdsLogo({
     super.key,
@@ -217,7 +346,8 @@ class Restaurant {
   }
 
   static Color _colorFromHex(String? rawColor) {
-    final value = int.tryParse((rawColor ?? '0xFFFFE7A3').replaceFirst('#', '0xFF'));
+    final value =
+        int.tryParse((rawColor ?? '0xFFFFE7A3').replaceFirst('#', '0xFF'));
     return Color(value ?? 0xFFFFE7A3);
   }
 }
@@ -248,7 +378,8 @@ class MenuItem {
   }
 
   factory MenuItem.fromJson(Map<String, dynamic> json) {
-    final rawCategory = (json['category'] as String? ?? '').trim().toLowerCase();
+    final rawCategory =
+        (json['category'] as String? ?? '').trim().toLowerCase();
     final rawTag = (json['tag'] as String? ?? '').trim().toLowerCase();
     return MenuItem(
       name: json['name'] as String,
@@ -404,8 +535,8 @@ class ApiService {
         return '/api';
       }
 
-     // return 'http://127.0.0.1:4000';
- return 'http://47.128.78.122:4000';
+      // return 'http://127.0.0.1:4000';
+      return 'http://47.128.78.122:4000';
     }
 
     if (kReleaseMode) {
@@ -467,7 +598,8 @@ class ApiService {
 
     final decoded = jsonDecode(response.body) as Map<String, dynamic>;
     return (decoded['restaurants'] as List<dynamic>)
-        .map((restaurant) => Restaurant.fromJson(restaurant as Map<String, dynamic>))
+        .map((restaurant) =>
+            Restaurant.fromJson(restaurant as Map<String, dynamic>))
         .toList();
   }
 
@@ -572,7 +704,8 @@ class ApiService {
         body: jsonEncode(body),
       );
     } catch (_) {
-      throw Exception('KDS server is offline. Start the backend API and try again.');
+      throw Exception(
+          'KDS server is offline. Start the backend API and try again.');
     }
   }
 
@@ -610,7 +743,8 @@ class ApiService {
         },
       );
     } catch (_) {
-      throw Exception('KDS server is offline. Start the backend API and try again.');
+      throw Exception(
+          'KDS server is offline. Start the backend API and try again.');
     }
   }
 
@@ -651,7 +785,8 @@ class ApiService {
         body: jsonEncode(body),
       );
     } catch (_) {
-      throw Exception('KDS server is offline. Start the backend API and try again.');
+      throw Exception(
+          'KDS server is offline. Start the backend API and try again.');
     }
   }
 
@@ -670,7 +805,8 @@ class ApiService {
         body: jsonEncode(body),
       );
     } catch (_) {
-      throw Exception('KDS server is offline. Start the backend API and try again.');
+      throw Exception(
+          'KDS server is offline. Start the backend API and try again.');
     }
   }
 
@@ -685,7 +821,6 @@ class ApiService {
 }
 
 final kdsRestaurants = <Restaurant>[];
-
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -739,7 +874,8 @@ class _LoginScreenState extends State<LoginScreen> {
       if (!mounted) {
         return;
       }
-      setState(() => errorMessage = error.toString().replaceFirst('Exception: ', ''));
+      setState(() =>
+          errorMessage = error.toString().replaceFirst('Exception: ', ''));
     } finally {
       if (mounted) {
         setState(() => submitting = false);
@@ -882,7 +1018,9 @@ class _LoginScreenState extends State<LoginScreen> {
                   FilledButton(
                     onPressed: submitting ? null : submit,
                     child: Text(
-                      submitting ? 'Please wait...' : (signUpMode ? 'Create account' : 'Sign in'),
+                      submitting
+                          ? 'Please wait...'
+                          : (signUpMode ? 'Create account' : 'Sign in'),
                     ),
                   ),
                 ],
@@ -949,7 +1087,8 @@ class _AuthSheetState extends State<_AuthSheet> {
       if (!mounted) {
         return;
       }
-      setState(() => errorMessage = error.toString().replaceFirst('Exception: ', ''));
+      setState(() =>
+          errorMessage = error.toString().replaceFirst('Exception: ', ''));
     } finally {
       if (mounted) {
         setState(() => submitting = false);
@@ -961,7 +1100,8 @@ class _AuthSheetState extends State<_AuthSheet> {
   Widget build(BuildContext context) {
     return AnimatedPadding(
       duration: const Duration(milliseconds: 150),
-      padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+      padding:
+          EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
       child: Container(
         decoration: const BoxDecoration(
           color: Colors.white,
@@ -999,7 +1139,8 @@ class _AuthSheetState extends State<_AuthSheet> {
                 const Text(
                   'Sign in to order',
                   textAlign: TextAlign.center,
-                  style: TextStyle(fontSize: 24, fontWeight: FontWeight.w900, color: kdsInk),
+                  style: TextStyle(
+                      fontSize: 24, fontWeight: FontWeight.w900, color: kdsInk),
                 ),
                 const SizedBox(height: 8),
                 const Text(
@@ -1049,7 +1190,8 @@ class _AuthSheetState extends State<_AuthSheet> {
                               vertical: 18,
                             ),
                             border: OutlineInputBorder(
-                              borderRadius: BorderRadius.all(Radius.circular(16)),
+                              borderRadius:
+                                  BorderRadius.all(Radius.circular(16)),
                             ),
                           ),
                         ),
@@ -1095,7 +1237,8 @@ class _AuthSheetState extends State<_AuthSheet> {
                         const _InfoStrip(
                           icon: Icons.admin_panel_settings,
                           title: 'Admin demo',
-                          subtitle: '01700000000 / admin123 opens the admin panel.',
+                          subtitle:
+                              '01700000000 / admin123 opens the admin panel.',
                         ),
                       ],
                       if (errorMessage != null) ...[
@@ -1112,7 +1255,9 @@ class _AuthSheetState extends State<_AuthSheet> {
                       FilledButton(
                         onPressed: submitting ? null : submit,
                         child: Text(
-                          submitting ? 'Please wait...' : (signUpMode ? 'Create account' : 'Sign in'),
+                          submitting
+                              ? 'Please wait...'
+                              : (signUpMode ? 'Create account' : 'Sign in'),
                         ),
                       ),
                     ],
@@ -1120,7 +1265,8 @@ class _AuthSheetState extends State<_AuthSheet> {
                 ),
                 const SizedBox(height: 16),
                 TextButton(
-                  onPressed: submitting ? null : () => Navigator.of(context).pop(),
+                  onPressed:
+                      submitting ? null : () => Navigator.of(context).pop(),
                   child: const Text('Cancel'),
                 ),
               ],
@@ -1265,7 +1411,6 @@ class _ShellScreenState extends State<ShellScreen> {
   void selectCategory(String category) {
     setState(() {
       selectedCategory = category;
-      selectedRestaurant = null;
     });
   }
 
@@ -1291,7 +1436,8 @@ class _ShellScreenState extends State<ShellScreen> {
       }
     }
 
-    final subtotal = cart.fold(0, (sum, line) => sum + line.item.price * line.quantity);
+    final subtotal =
+        cart.fold(0, (sum, line) => sum + line.item.price * line.quantity);
     final restaurantName = restaurants
         .firstWhere(
           (restaurant) => restaurant.menu.any(
@@ -1300,7 +1446,8 @@ class _ShellScreenState extends State<ShellScreen> {
           orElse: () => restaurants.first,
         )
         .name;
-    final orderLines = cart.map((line) => CartLine(line.item, line.quantity)).toList();
+    final orderLines =
+        cart.map((line) => CartLine(line.item, line.quantity)).toList();
 
     try {
       final order = await ApiService.createOrder(
@@ -1341,7 +1488,8 @@ class _ShellScreenState extends State<ShellScreen> {
     }
   }
 
-  Future<void> updateOrder(CustomerOrder order, OrderStatus status, {String? riderName}) async {
+  Future<void> updateOrder(CustomerOrder order, OrderStatus status,
+      {String? riderName}) async {
     final updatedOrder = await ApiService.updateOrderStatus(
       session: session!,
       order: order,
@@ -1376,7 +1524,8 @@ class _ShellScreenState extends State<ShellScreen> {
         },
         onRestaurantUpdated: (restaurant) {
           setState(() {
-            final index = restaurants.indexWhere((entry) => entry.id == restaurant.id);
+            final index =
+                restaurants.indexWhere((entry) => entry.id == restaurant.id);
             if (index >= 0) {
               restaurants[index] = restaurant;
             }
@@ -1404,6 +1553,7 @@ class _ShellScreenState extends State<ShellScreen> {
               onAdd: addToCart,
               onBack: () => setState(() => selectedRestaurant = null),
               selectedCategory: selectedCategory,
+              onCategorySelected: selectCategory,
             ),
       SearchScreen(
         restaurants: restaurants,
@@ -1503,9 +1653,12 @@ class HomeScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final filteredRestaurants = restaurants.where(
-      (restaurant) => restaurant.menu.any((item) => item.category == selectedCategory),
-    ).toList();
+    final filteredRestaurants = restaurants
+        .where(
+          (restaurant) =>
+              restaurant.menu.any((item) => item.category == selectedCategory),
+        )
+        .toList();
 
     return Scaffold(
       appBar: AppBar(
@@ -1534,27 +1687,9 @@ class HomeScreen extends StatelessWidget {
         children: [
           const _PromoBanner(),
           const SizedBox(height: 18),
-          Row(
-            children: [
-              for (final category in menuCategories) ...[
-                Expanded(
-                  child: Padding(
-                    padding: EdgeInsets.only(right: category == menuCategories.last ? 0 : 8),
-                    child: ChoiceChip(
-                      label: Text(menuCategoryLabel(category)),
-                      selected: selectedCategory == category,
-                      onSelected: (_) => onCategorySelected(category),
-                      selectedColor: kdsYellow.withValues(alpha: .8),
-                      backgroundColor: Colors.white,
-                      labelStyle: TextStyle(
-                        fontWeight: FontWeight.w700,
-                        color: selectedCategory == category ? kdsInk : kdsMuted,
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            ],
+          MenuCategoryTabs(
+            selectedCategory: selectedCategory,
+            onCategorySelected: onCategorySelected,
           ),
           const SizedBox(height: 16),
           const Text(
@@ -1572,7 +1707,8 @@ class HomeScreen extends StatelessWidget {
             const _InfoStrip(
               icon: Icons.info_outline,
               title: 'No items in this category',
-              subtitle: 'Try another category or add items from the admin panel.',
+              subtitle:
+                  'Try another category or add items from the admin panel.',
             )
           else
             for (final restaurant in filteredRestaurants) ...[
@@ -1663,7 +1799,9 @@ class RestaurantCard extends StatelessWidget {
                       spacing: 8,
                       runSpacing: 8,
                       children: [
-                        _Pill(icon: Icons.category_rounded, text: menuCategoryLabel(category)),
+                        _Pill(
+                            icon: Icons.category_rounded,
+                            text: menuCategoryLabel(category)),
                         _Pill(
                           icon: Icons.schedule,
                           text: '${restaurant.minutes} min',
@@ -1697,12 +1835,14 @@ class RestaurantScreen extends StatelessWidget {
     required this.onAdd,
     required this.onBack,
     required this.selectedCategory,
+    required this.onCategorySelected,
   });
 
   final Restaurant restaurant;
   final MenuItemAction onAdd;
   final VoidCallback onBack;
   final String selectedCategory;
+  final ValueChanged<String> onCategorySelected;
 
   @override
   Widget build(BuildContext context) {
@@ -1717,11 +1857,9 @@ class RestaurantScreen extends StatelessWidget {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          ChoiceChip(
-            label: Text(menuCategoryLabel(selectedCategory)),
-            selected: true,
-            onSelected: null,
-            selectedColor: kdsYellow.withValues(alpha: .8),
+          MenuCategoryTabs(
+            selectedCategory: selectedCategory,
+            onCategorySelected: onCategorySelected,
           ),
           const SizedBox(height: 14),
           Container(
@@ -1758,11 +1896,13 @@ class RestaurantScreen extends StatelessWidget {
             style: TextStyle(fontSize: 22, fontWeight: FontWeight.w900),
           ),
           const SizedBox(height: 12),
-          for (final item in restaurant.menu.where((item) => item.category == selectedCategory)) ...[
+          for (final item in restaurant.menu
+              .where((item) => item.category == selectedCategory)) ...[
             MenuItemTile(item: item, onAdd: onAdd),
             const SizedBox(height: 10),
           ],
-          if (restaurant.menu.every((item) => item.category != selectedCategory))
+          if (restaurant.menu
+              .every((item) => item.category != selectedCategory))
             const _InfoStrip(
               icon: Icons.info_outline,
               title: 'No items in this category',
@@ -1808,7 +1948,8 @@ class MenuItemTile extends StatelessWidget {
                       ),
                     ],
                   ),
-                  Text(item.description, style: const TextStyle(color: kdsMuted)),
+                  Text(item.description,
+                      style: const TextStyle(color: kdsMuted)),
                   const SizedBox(height: 10),
                   Text(
                     'Tk ${item.price}',
@@ -1866,34 +2007,22 @@ class _SearchScreenState extends State<SearchScreen> {
           restaurant.cuisine.toLowerCase().contains(lower) ||
           menuMatch;
     }).toList();
-    final filteredResults = results.where(
-      (restaurant) => restaurant.menu.any(
-        (item) => item.category == widget.selectedCategory,
-      ),
-    ).toList();
+    final filteredResults = results
+        .where(
+          (restaurant) => restaurant.menu.any(
+            (item) => item.category == widget.selectedCategory,
+          ),
+        )
+        .toList();
 
     return Scaffold(
       appBar: AppBar(title: const KdsAppBarBrand(title: 'Search')),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          Row(
-            children: [
-              for (final category in menuCategories) ...[
-                Expanded(
-                  child: Padding(
-                    padding: EdgeInsets.only(right: category == menuCategories.last ? 0 : 8),
-                    child: ChoiceChip(
-                      label: Text(menuCategoryLabel(category)),
-                      selected: widget.selectedCategory == category,
-                      onSelected: (_) => widget.onCategorySelected(category),
-                      selectedColor: kdsYellow.withValues(alpha: .8),
-                      backgroundColor: Colors.white,
-                    ),
-                  ),
-                ),
-              ],
-            ],
+          MenuCategoryTabs(
+            selectedCategory: widget.selectedCategory,
+            onCategorySelected: widget.onCategorySelected,
           ),
           const SizedBox(height: 16),
           TextField(
@@ -1946,7 +2075,8 @@ class CartScreen extends StatelessWidget {
   final Future<AuthSession?> Function() onAuthRequested;
   static const fixedDeliveryFee = 40;
 
-  int get subtotal => cart.fold(0, (sum, line) => sum + line.item.price * line.quantity);
+  int get subtotal =>
+      cart.fold(0, (sum, line) => sum + line.item.price * line.quantity);
   int get total => subtotal + (cart.isEmpty ? 0 : fixedDeliveryFee);
 
   @override
@@ -1965,7 +2095,8 @@ class CartScreen extends StatelessWidget {
                       const SizedBox(height: 16),
                       const Text(
                         'Sign in to place orders',
-                        style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900),
+                        style: TextStyle(
+                            fontSize: 20, fontWeight: FontWeight.w900),
                         textAlign: TextAlign.center,
                       ),
                       const SizedBox(height: 8),
@@ -1990,55 +2121,55 @@ class CartScreen extends StatelessWidget {
               ),
             )
           : cart.isEmpty
-          ? const Center(
-              child: Text(
-                'Your cart is empty',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
-              ),
-            )
-          : ListView(
-              padding: const EdgeInsets.all(16),
-              children: [
-                for (final line in cart) ...[
-                  _CartLineTile(line: line, onChanged: onChanged),
-                  const SizedBox(height: 10),
-                ],
-                const SizedBox(height: 12),
-                _Panel(
-                  child: Column(
-                    children: [
-                      _AmountRow(label: 'Subtotal', amount: subtotal),
-                      const SizedBox(height: 8),
-                      const _AmountRow(
-                        label: 'Fixed delivery fee',
-                        amount: fixedDeliveryFee,
-                      ),
-                      const Divider(height: 28),
-                      _AmountRow(label: 'Total', amount: total, bold: true),
-                      const SizedBox(height: 16),
-                      FilledButton.icon(
-                        onPressed: () async {
-                          final order = await onPlaceOrder();
-                          if (order == null || !context.mounted) {
-                            return;
-                          }
-                          Navigator.of(context).push(
-                            MaterialPageRoute(
-                              builder: (_) => TrackingScreen(
-                                session: session!,
-                                initialOrder: order,
-                              ),
-                            ),
-                          );
-                        },
-                        icon: const Icon(Icons.check_circle),
-                        label: const Text('Place order - Cash on delivery'),
-                      ),
-                    ],
+              ? const Center(
+                  child: Text(
+                    'Your cart is empty',
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
                   ),
+                )
+              : ListView(
+                  padding: const EdgeInsets.all(16),
+                  children: [
+                    for (final line in cart) ...[
+                      _CartLineTile(line: line, onChanged: onChanged),
+                      const SizedBox(height: 10),
+                    ],
+                    const SizedBox(height: 12),
+                    _Panel(
+                      child: Column(
+                        children: [
+                          _AmountRow(label: 'Subtotal', amount: subtotal),
+                          const SizedBox(height: 8),
+                          const _AmountRow(
+                            label: 'Fixed delivery fee',
+                            amount: fixedDeliveryFee,
+                          ),
+                          const Divider(height: 28),
+                          _AmountRow(label: 'Total', amount: total, bold: true),
+                          const SizedBox(height: 16),
+                          FilledButton.icon(
+                            onPressed: () async {
+                              final order = await onPlaceOrder();
+                              if (order == null || !context.mounted) {
+                                return;
+                              }
+                              Navigator.of(context).push(
+                                MaterialPageRoute(
+                                  builder: (_) => TrackingScreen(
+                                    session: session!,
+                                    initialOrder: order,
+                                  ),
+                                ),
+                              );
+                            },
+                            icon: const Icon(Icons.check_circle),
+                            label: const Text('Place order - Cash on delivery'),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
                 ),
-              ],
-            ),
     );
   }
 }
@@ -2064,7 +2195,8 @@ class _CartLineTile extends StatelessWidget {
                     line.item.name,
                     style: const TextStyle(fontWeight: FontWeight.w900),
                   ),
-                  Text('Tk ${line.item.price}', style: const TextStyle(color: kdsMuted)),
+                  Text('Tk ${line.item.price}',
+                      style: const TextStyle(color: kdsMuted)),
                 ],
               ),
             ),
@@ -2077,7 +2209,8 @@ class _CartLineTile extends StatelessWidget {
               },
               icon: const Icon(Icons.remove_circle_outline),
             ),
-            Text('${line.quantity}', style: const TextStyle(fontWeight: FontWeight.w900)),
+            Text('${line.quantity}',
+                style: const TextStyle(fontWeight: FontWeight.w900)),
             IconButton(
               onPressed: () {
                 line.quantity++;
@@ -2170,7 +2303,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       const SizedBox(height: 16),
                       const Text(
                         'Sign in to see your orders',
-                        style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900),
+                        style: TextStyle(
+                            fontSize: 20, fontWeight: FontWeight.w900),
                         textAlign: TextAlign.center,
                       ),
                       const SizedBox(height: 8),
@@ -2224,7 +2358,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                   fontWeight: FontWeight.w900,
                                 ),
                               ),
-                              Text(widget.session!.phone, style: const TextStyle(color: kdsMuted)),
+                              Text(widget.session!.phone,
+                                  style: const TextStyle(color: kdsMuted)),
                             ],
                           ),
                         ),
@@ -2250,7 +2385,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         return _InfoStrip(
                           icon: Icons.error_outline,
                           title: 'Could not load orders',
-                          subtitle: snapshot.error.toString().replaceFirst('Exception: ', ''),
+                          subtitle: snapshot.error
+                              .toString()
+                              .replaceFirst('Exception: ', ''),
                         );
                       }
 
@@ -2310,14 +2447,16 @@ class _MyOrderCard extends StatelessWidget {
                 Expanded(
                   child: Text(
                     order.id,
-                    style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w900),
+                    style: const TextStyle(
+                        fontSize: 17, fontWeight: FontWeight.w900),
                   ),
                 ),
                 _StatusChip(status: order.status),
               ],
             ),
             const SizedBox(height: 8),
-            Text(order.restaurantName, style: const TextStyle(fontWeight: FontWeight.w800)),
+            Text(order.restaurantName,
+                style: const TextStyle(fontWeight: FontWeight.w800)),
             const SizedBox(height: 4),
             Text(
               '${order.lines.length} item${order.lines.length == 1 ? '' : 's'} • Tk ${order.total}',
@@ -2375,7 +2514,8 @@ class _TrackingScreenState extends State<TrackingScreen> {
   }
 
   Future<void> refreshOrder() async {
-    if (order.status == OrderStatus.delivered || order.status == OrderStatus.rejected) {
+    if (order.status == OrderStatus.delivered ||
+        order.status == OrderStatus.rejected) {
       timer?.cancel();
       return;
     }
@@ -2409,7 +2549,10 @@ class _TrackingScreenState extends State<TrackingScreen> {
   @override
   Widget build(BuildContext context) {
     final steps = [
-      ('Pending admin approval', 'Admin has been notified and will review this order'),
+      (
+        'Pending admin approval',
+        'Admin has been notified and will review this order'
+      ),
       ('Order accepted', 'Admin accepted your order'),
       ('Preparing food', 'Kitchen is preparing your items'),
       ('Rider assigned', order.riderName ?? 'A local rider will be assigned'),
@@ -2434,7 +2577,8 @@ class _TrackingScreenState extends State<TrackingScreen> {
               children: [
                 Text(
                   '${order.id} • Tk ${order.total}',
-                  style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w900),
+                  style: const TextStyle(
+                      fontSize: 20, fontWeight: FontWeight.w900),
                 ),
                 const SizedBox(height: 6),
                 _StatusChip(status: order.status),
@@ -2448,12 +2592,12 @@ class _TrackingScreenState extends State<TrackingScreen> {
                   )
                 else
                   for (var i = 0; i < steps.length; i++)
-                  _TimelineStep(
-                    title: steps[i].$1,
-                    subtitle: steps[i].$2,
-                    active: i <= activeStep,
-                    last: i == steps.length - 1,
-                  ),
+                    _TimelineStep(
+                      title: steps[i].$1,
+                      subtitle: steps[i].$2,
+                      active: i <= activeStep,
+                      last: i == steps.length - 1,
+                    ),
               ],
             ),
           ),
@@ -2496,19 +2640,21 @@ class AdminScreen extends StatelessWidget {
   final AuthSession session;
   final List<CustomerOrder> orders;
   final List<Restaurant> restaurants;
-  final Future<void> Function(CustomerOrder order, OrderStatus status, {String? riderName})
-      onUpdateOrder;
+  final Future<void> Function(CustomerOrder order, OrderStatus status,
+      {String? riderName}) onUpdateOrder;
   final VoidCallback onLogout;
   final ValueChanged<Restaurant> onRestaurantCreated;
   final ValueChanged<Restaurant> onRestaurantUpdated;
 
   @override
   Widget build(BuildContext context) {
-    final pendingCount = orders.where((order) => order.status == OrderStatus.pending).length;
+    final pendingCount =
+        orders.where((order) => order.status == OrderStatus.pending).length;
     final activeCount = orders
         .where(
           (order) =>
-              order.status != OrderStatus.delivered && order.status != OrderStatus.rejected,
+              order.status != OrderStatus.delivered &&
+              order.status != OrderStatus.rejected,
         )
         .length;
     final deliveredCount =
@@ -2592,14 +2738,16 @@ class AdminScreen extends StatelessWidget {
           _InfoStrip(
             icon: Icons.storefront,
             title: 'Restaurants uploaded',
-            subtitle: '${restaurants.length} active restaurant${restaurants.length == 1 ? '' : 's'} available to customers.',
+            subtitle:
+                '${restaurants.length} active restaurant${restaurants.length == 1 ? '' : 's'} available to customers.',
           ),
           const SizedBox(height: 12),
           if (restaurants.isEmpty)
             const _InfoStrip(
               icon: Icons.add_business,
               title: 'No restaurants uploaded',
-              subtitle: 'Use the add restaurant button to publish your first restaurant.',
+              subtitle:
+                  'Use the add restaurant button to publish your first restaurant.',
             )
           else
             for (final restaurant in restaurants) ...[
@@ -2633,7 +2781,8 @@ class AdminScreen extends StatelessWidget {
                   style: TextStyle(fontSize: 22, fontWeight: FontWeight.w900),
                 ),
               ),
-              Text('${orders.length} total', style: const TextStyle(color: kdsMuted)),
+              Text('${orders.length} total',
+                  style: const TextStyle(color: kdsMuted)),
             ],
           ),
           const SizedBox(height: 12),
@@ -2706,8 +2855,10 @@ class _AdminRestaurantTile extends StatelessWidget {
           backgroundColor: restaurant.color,
           child: const Icon(Icons.storefront, color: kdsInk),
         ),
-        title: Text(restaurant.name, style: const TextStyle(fontWeight: FontWeight.w900)),
-        subtitle: Text('${restaurant.cuisine} • ${restaurant.menu.length} menu items'),
+        title: Text(restaurant.name,
+            style: const TextStyle(fontWeight: FontWeight.w900)),
+        subtitle: Text(
+            '${restaurant.cuisine} • ${restaurant.menu.length} menu items'),
         trailing: IconButton(
           tooltip: 'Edit restaurant',
           onPressed: onEdit,
@@ -2807,7 +2958,8 @@ class _RestaurantFormDialogState extends State<RestaurantFormDialog> {
       if (!mounted) {
         return;
       }
-      setState(() => errorMessage = error.toString().replaceFirst('Exception: ', ''));
+      setState(() =>
+          errorMessage = error.toString().replaceFirst('Exception: ', ''));
     } finally {
       if (mounted) {
         setState(() => saving = false);
@@ -2857,7 +3009,8 @@ class _RestaurantFormDialogState extends State<RestaurantFormDialog> {
                 ),
                 IconButton.filledTonal(
                   tooltip: 'Add menu item',
-                  onPressed: () => setState(() => menuRows.add(MenuItemFormRow())),
+                  onPressed: () =>
+                      setState(() => menuRows.add(MenuItemFormRow())),
                   icon: const Icon(Icons.add),
                 ),
               ],
@@ -2932,7 +3085,9 @@ class MenuItemFormRow {
       name: nameController.text.trim(),
       description: descriptionController.text.trim(),
       price: int.tryParse(priceController.text) ?? 0,
-      tag: tagController.text.trim().isEmpty ? 'Item' : tagController.text.trim(),
+      tag: tagController.text.trim().isEmpty
+          ? 'Item'
+          : tagController.text.trim(),
       category: category,
     );
   }
@@ -2985,7 +3140,8 @@ class _MenuItemEditor extends StatelessWidget {
           ),
           _DialogField(controller: row.nameController, label: 'Item name'),
           const SizedBox(height: 10),
-          _DialogField(controller: row.descriptionController, label: 'Description'),
+          _DialogField(
+              controller: row.descriptionController, label: 'Description'),
           const SizedBox(height: 10),
           Row(
             children: [
@@ -3070,13 +3226,13 @@ class _AdminOrderCard extends StatelessWidget {
   });
 
   final CustomerOrder order;
-  final Future<void> Function(CustomerOrder order, OrderStatus status, {String? riderName})
-      onUpdateOrder;
+  final Future<void> Function(CustomerOrder order, OrderStatus status,
+      {String? riderName}) onUpdateOrder;
 
   @override
   Widget build(BuildContext context) {
-    final isClosed =
-        order.status == OrderStatus.delivered || order.status == OrderStatus.rejected;
+    final isClosed = order.status == OrderStatus.delivered ||
+        order.status == OrderStatus.rejected;
 
     return Card(
       child: Padding(
@@ -3089,14 +3245,16 @@ class _AdminOrderCard extends StatelessWidget {
                 Expanded(
                   child: Text(
                     order.id,
-                    style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900),
+                    style: const TextStyle(
+                        fontSize: 18, fontWeight: FontWeight.w900),
                   ),
                 ),
                 _StatusChip(status: order.status),
               ],
             ),
             const SizedBox(height: 8),
-            Text(order.restaurantName, style: const TextStyle(fontWeight: FontWeight.w800)),
+            Text(order.restaurantName,
+                style: const TextStyle(fontWeight: FontWeight.w800)),
             const SizedBox(height: 4),
             Text(
               '${order.customerName} • ${order.phone}',
@@ -3154,8 +3312,8 @@ class _OrderActions extends StatelessWidget {
   });
 
   final CustomerOrder order;
-  final Future<void> Function(CustomerOrder order, OrderStatus status, {String? riderName})
-      onUpdateOrder;
+  final Future<void> Function(CustomerOrder order, OrderStatus status,
+      {String? riderName}) onUpdateOrder;
 
   @override
   Widget build(BuildContext context) {
@@ -3372,7 +3530,8 @@ class _InfoStrip extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(title, style: const TextStyle(fontWeight: FontWeight.w900)),
+                Text(title,
+                    style: const TextStyle(fontWeight: FontWeight.w900)),
                 Text(subtitle, style: const TextStyle(color: kdsMuted)),
               ],
             ),
@@ -3442,7 +3601,9 @@ class _TimelineStep extends StatelessWidget {
               Container(
                 width: 2,
                 height: 48,
-                color: active ? kdsRedOrange.withValues(alpha: .4) : Colors.black12,
+                color: active
+                    ? kdsRedOrange.withValues(alpha: .4)
+                    : Colors.black12,
               ),
           ],
         ),
@@ -3453,7 +3614,8 @@ class _TimelineStep extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(title, style: const TextStyle(fontWeight: FontWeight.w900)),
+                Text(title,
+                    style: const TextStyle(fontWeight: FontWeight.w900)),
                 Text(subtitle, style: const TextStyle(color: kdsMuted)),
               ],
             ),
@@ -3489,7 +3651,8 @@ class _MetricCard extends StatelessWidget {
               const SizedBox(height: 12),
               Text(
                 value,
-                style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w900),
+                style:
+                    const TextStyle(fontSize: 22, fontWeight: FontWeight.w900),
               ),
               Text(label, style: const TextStyle(color: kdsMuted)),
             ],
