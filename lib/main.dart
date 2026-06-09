@@ -127,13 +127,11 @@ class CategoryHeroCard extends StatelessWidget {
     required this.category,
     required this.title,
     required this.subtitle,
-    required this.itemCount,
   });
 
   final String category;
   final String title;
   final String subtitle;
-  final int itemCount;
 
   @override
   Widget build(BuildContext context) {
@@ -154,16 +152,14 @@ class CategoryHeroCard extends StatelessWidget {
       },
       child: Container(
         key: ValueKey(category),
-        height: 156,
+        height: 136,
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(26),
           gradient: LinearGradient(
             colors: [
-              accent.withValues(alpha: .90),
-              accent.withValues(alpha: .45),
-              Colors.white,
+              accent.withValues(alpha: .95),
+              accent.withValues(alpha: .72),
             ],
-            stops: const [0.0, 0.7, 1.0],
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
           ),
@@ -178,71 +174,56 @@ class CategoryHeroCard extends StatelessWidget {
         child: Stack(
           children: [
             Positioned(
-              right: -12,
-              bottom: -12,
+              right: -18,
+              bottom: -18,
               child: Icon(
                 icon,
-                size: 126,
-                color: Colors.white.withValues(alpha: .28),
+                size: 112,
+                color: Colors.white.withValues(alpha: .18),
               ),
             ),
-            Positioned(
-              left: 18,
-              top: 18,
-              right: 18,
-              bottom: 18,
+            Padding(
+              padding: const EdgeInsets.all(18),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                mainAxisAlignment: MainAxisAlignment.end,
                 children: [
                   Container(
                     padding:
-                        const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                        const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
                     decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: .22),
+                      color: Colors.white.withValues(alpha: .18),
                       borderRadius: BorderRadius.circular(999),
-                      border: Border.all(
-                        color: Colors.white.withValues(alpha: .35),
-                      ),
                     ),
                     child: Text(
-                      '${menuCategoryLabel(category)} category',
+                      menuCategoryLabel(category),
                       style: const TextStyle(
                         color: Colors.white,
                         fontWeight: FontWeight.w800,
                       ),
                     ),
                   ),
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        title,
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 22,
-                          fontWeight: FontWeight.w900,
-                        ),
-                      ),
-                      const SizedBox(height: 6),
-                      Text(
-                        subtitle,
-                        style: TextStyle(
-                          color: Colors.white.withValues(alpha: .92),
-                          fontSize: 14,
-                          height: 1.35,
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      Text(
-                        '$itemCount item${itemCount == 1 ? '' : 's'}',
-                        style: TextStyle(
-                          color: Colors.white.withValues(alpha: .95),
-                          fontWeight: FontWeight.w800,
-                        ),
-                      ),
-                    ],
+                  const SizedBox(height: 10),
+                  Text(
+                    title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 22,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    subtitle,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: Colors.white.withValues(alpha: .94),
+                      fontSize: 13,
+                      height: 1.25,
+                    ),
                   ),
                 ],
               ),
@@ -1853,14 +1834,6 @@ class HomeScreen extends StatelessWidget {
             category: selectedCategory,
             title: menuCategoryLabel(selectedCategory),
             subtitle: menuCategoryBlurb(selectedCategory),
-            itemCount: restaurants.fold<int>(
-              0,
-              (sum, restaurant) =>
-                  sum +
-                  restaurant.menu
-                      .where((item) => item.category == selectedCategory)
-                      .length,
-            ),
           ),
           const SizedBox(height: 16),
           const Text(
@@ -2195,14 +2168,6 @@ class _SearchScreenState extends State<SearchScreen> {
             category: widget.selectedCategory,
             title: menuCategoryLabel(widget.selectedCategory),
             subtitle: menuCategoryBlurb(widget.selectedCategory),
-            itemCount: widget.restaurants.fold<int>(
-              0,
-              (sum, restaurant) =>
-                  sum +
-                  restaurant.menu
-                      .where((item) => item.category == widget.selectedCategory)
-                      .length,
-            ),
           ),
           const SizedBox(height: 16),
           TextField(
