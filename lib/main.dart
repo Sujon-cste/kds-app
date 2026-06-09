@@ -26,7 +26,7 @@ String menuCategoryLabel(String value) {
     case 'medicine':
       return 'Medicine';
     case 'others':
-      return 'Others';
+      return 'Groceries';
     default:
       return value;
   }
@@ -39,7 +39,7 @@ IconData menuCategoryIcon(String value) {
     case 'medicine':
       return Icons.medical_services_rounded;
     case 'others':
-      return Icons.apps_rounded;
+      return Icons.local_grocery_store_rounded;
     default:
       return Icons.category_rounded;
   }
@@ -52,7 +52,7 @@ Color menuCategoryColor(String value) {
     case 'medicine':
       return const Color(0xFF7CDBB3);
     case 'others':
-      return const Color(0xFFB9A7FF);
+      return const Color(0xFF8DD17E);
     default:
       return kdsYellow;
   }
@@ -65,7 +65,7 @@ String menuCategoryBlurb(String value) {
     case 'medicine':
       return 'Health essentials and quick pharmacy picks.';
     case 'others':
-      return 'Useful extras and everything in between.';
+      return 'Groceries, household picks, and essentials.';
     default:
       return 'Browse available items in this category.';
   }
@@ -1843,8 +1843,7 @@ class HomeScreen extends StatelessWidget {
       body: ListView(
         padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
         children: [
-          const _PromoBanner(),
-          const SizedBox(height: 18),
+          const SizedBox(height: 10),
           MenuCategoryTabs(
             selectedCategory: selectedCategory,
             onCategorySelected: onCategorySelected,
@@ -3593,47 +3592,6 @@ class _EmptyOrdersPanel extends StatelessWidget {
             'Place an order from the customer cart to notify admin.',
             textAlign: TextAlign.center,
             style: TextStyle(color: kdsMuted),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _PromoBanner extends StatelessWidget {
-  const _PromoBanner();
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        color: kdsYellow,
-        borderRadius: BorderRadius.circular(24),
-      ),
-      child: Row(
-        children: [
-          const Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Khilkhet launch offer',
-                  style: TextStyle(fontSize: 22, fontWeight: FontWeight.w900),
-                ),
-                SizedBox(height: 8),
-                Text('Use KDS40 for local food delivery deals.'),
-              ],
-            ),
-          ),
-          Container(
-            width: 68,
-            height: 68,
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(20),
-            ),
-            child: const Icon(Icons.local_offer, color: kdsRedOrange, size: 34),
           ),
         ],
       ),
