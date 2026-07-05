@@ -19,6 +19,8 @@ typedef MenuItemAction = Future<void> Function(MenuItem item);
 
 const menuCategories = ['food', 'medicine', 'others'];
 
+bool isSupportedMenuCategory(String value) => menuCategories.contains(value);
+
 String menuCategoryLabel(String value) {
   switch (value) {
     case 'food':
@@ -140,7 +142,7 @@ class CategoryHeroCard extends StatelessWidget {
 
     return AnimatedSwitcher(
       duration: const Duration(milliseconds: 280),
-      switchInCurve: Curves.easeOutBack,
+      switchInCurve: Curves.easeOutCubic,
       switchOutCurve: Curves.easeInCubic,
       transitionBuilder: (child, animation) {
         final fade = CurvedAnimation(parent: animation, curve: Curves.easeOut);
@@ -472,12 +474,12 @@ class Restaurant {
 
   factory Restaurant.fromJson(Map<String, dynamic> json) {
     return Restaurant(
-      id: json['id'] as int,
+      id: (json['id'] as num).toInt(),
       name: json['name'] as String,
       cuisine: json['cuisine'] as String,
       rating: (json['rating'] as num).toDouble(),
-      minutes: json['minutes'] as int,
-      deliveryFee: json['deliveryFee'] as int,
+      minutes: (json['minutes'] as num).toInt(),
+      deliveryFee: (json['deliveryFee'] as num).toInt(),
       color: _colorFromHex(json['colorHex'] as String?),
       approved: json['approved'] as bool? ?? true,
       menu: (json['menu'] as List<dynamic>)
@@ -522,14 +524,15 @@ class MenuItem {
     final rawCategory =
         (json['category'] as String? ?? '').trim().toLowerCase();
     final rawTag = (json['tag'] as String? ?? '').trim().toLowerCase();
+    final tag = (json['tag'] as String? ?? '').trim();
     return MenuItem(
       name: json['name'] as String,
       description: json['description'] as String,
-      price: json['price'] as int,
-      tag: json['tag'] as String,
-      category: menuCategories.contains(rawCategory)
+      price: (json['price'] as num).toInt(),
+      tag: tag.isEmpty ? 'Item' : tag,
+      category: isSupportedMenuCategory(rawCategory)
           ? rawCategory
-          : (menuCategories.contains(rawTag) ? rawTag : 'food'),
+          : (isSupportedMenuCategory(rawTag) ? rawTag : 'food'),
     );
   }
 }
@@ -676,8 +679,7 @@ class ApiService {
         return '/api';
       }
 
-      // return 'http://127.0.0.1:4000';
-      return 'http://47.128.78.122:4000';
+      return 'http://127.0.0.1:4000';
     }
 
     if (kReleaseMode) {
@@ -961,7 +963,104 @@ class ApiService {
   }
 }
 
-final kdsRestaurants = <Restaurant>[];
+final kdsRestaurants = <Restaurant>[
+  const Restaurant(
+    id: 1,
+    name: 'Khilkhet Biryani House',
+    cuisine: 'Bangla, Biryani',
+    rating: 4.7,
+    minutes: 24,
+    deliveryFee: 40,
+    color: Color(0xFFFFE7A3),
+    menu: [
+      MenuItem(
+        name: 'Chicken Biryani',
+        description: 'Aromatic rice, tender chicken, salad',
+        price: 180,
+        tag: 'Popular',
+        category: 'food',
+      ),
+      MenuItem(
+        name: 'Beef Tehari',
+        description: 'Classic Dhaka tehari with mustard oil',
+        price: 220,
+        tag: 'Local',
+        category: 'food',
+      ),
+      MenuItem(
+        name: 'Borhani',
+        description: 'Chilled spiced yogurt drink',
+        price: 45,
+        tag: 'Drink',
+        category: 'food',
+      ),
+    ],
+  ),
+  const Restaurant(
+    id: 2,
+    name: 'Airport Thai & Fast Food',
+    cuisine: 'Thai, Chinese',
+    rating: 4.5,
+    minutes: 28,
+    deliveryFee: 40,
+    color: Color(0xFFFFC8B8),
+    menu: [
+      MenuItem(
+        name: 'Chicken Fried Rice',
+        description: 'Egg, vegetables, chicken and house sauce',
+        price: 170,
+        tag: 'Combo',
+        category: 'food',
+      ),
+      MenuItem(
+        name: 'Thai Soup',
+        description: 'Warm soup with chicken and prawns',
+        price: 140,
+        tag: 'Hot',
+        category: 'food',
+      ),
+      MenuItem(
+        name: 'Wonton',
+        description: 'Crispy wonton with chili dip',
+        price: 130,
+        tag: 'Snack',
+        category: 'food',
+      ),
+    ],
+  ),
+  const Restaurant(
+    id: 3,
+    name: 'Nikunj Burger Point',
+    cuisine: 'Burger, Fried Chicken',
+    rating: 4.4,
+    minutes: 19,
+    deliveryFee: 40,
+    color: Color(0xFFD9F99D),
+    menu: [
+      MenuItem(
+        name: 'Smoky Chicken Burger',
+        description: 'Grilled patty, cheese, house sauce',
+        price: 210,
+        tag: 'New',
+        category: 'food',
+      ),
+      MenuItem(
+        name: 'Crispy Wings',
+        description: 'Six pieces with garlic mayo',
+        price: 240,
+        tag: 'Crispy',
+        category: 'food',
+      ),
+      MenuItem(
+        name: 'French Fries',
+        description: 'Salted fries with ketchup',
+        price: 90,
+        tag: 'Side',
+        category: 'food',
+      ),
+    ],
+  ),
+];
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -1434,7 +1533,7 @@ class _ShellScreenState extends State<ShellScreen> {
   final cart = <CartLine>[];
   final orders = kdsOrders;
   final restaurants = kdsRestaurants;
-  bool ordersLoaded = false;
+  bool ordersLoaded = true;
   AuthSession? session;
   String selectedCategory = 'food';
 
@@ -1550,6 +1649,9 @@ class _ShellScreenState extends State<ShellScreen> {
   }
 
   void selectCategory(String category) {
+    if (!isSupportedMenuCategory(category) || selectedCategory == category) {
+      return;
+    }
     setState(() {
       selectedCategory = category;
     });
@@ -1724,7 +1826,12 @@ class _ShellScreenState extends State<ShellScreen> {
     return Scaffold(
       body: AnimatedSwitcher(
         duration: const Duration(milliseconds: 220),
-        child: pages[index],
+        child: KeyedSubtree(
+          key: ValueKey(
+            'shell-$index-$selectedCategory-${selectedRestaurant?.id ?? 'none'}',
+          ),
+          child: pages[index],
+        ),
       ),
       bottomNavigationBar: NavigationBar(
         selectedIndex: index,

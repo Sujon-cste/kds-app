@@ -16,7 +16,7 @@ KDS is a Flutter MVP for a hyperlocal food delivery service in Khilkhet, Dhaka.
 
 ## Run
 
-Start MySQL, create the database schema, then run the API and Flutter app.
+Start MySQL, create the database schema, then run the API and either the Flutter app or the React web frontend.
 
 ```bash
 cd /home/sujon/kds-app
@@ -46,6 +46,30 @@ For web build:
 ```bash
 flutter build web --dart-define=KDS_API_BASE_URL=http://127.0.0.1:4000
 ```
+
+## React Web Frontend
+
+A separate React web frontend is available in [`frontend/`](/home/sujon/kds-app/frontend).
+
+Run it locally:
+
+```bash
+cd frontend
+npm install
+cp .env.example .env
+npm run dev
+```
+
+For local development, make sure the backend is running on `http://127.0.0.1:4000`.
+
+For production builds:
+
+```bash
+cd frontend
+npm run build
+```
+
+Set `VITE_API_BASE_URL` if the API is not on the default local URL.
 
 ## Deploy
 
