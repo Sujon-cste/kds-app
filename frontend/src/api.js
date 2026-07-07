@@ -1,8 +1,26 @@
-const defaultBaseUrl = 'http://127.0.0.1:4000';
+const localBaseUrl = 'http://127.0.0.1:4000';
+const productionBaseUrl = 'https://api.kdeasylife.com';
 
 function getBaseUrl() {
-  const value = import.meta.env.VITE_API_BASE_URL || defaultBaseUrl;
-  return value.endsWith('/') ? value.slice(0, -1) : value;
+  const envValue = import.meta.env.VITE_API_BASE_URL;
+  if (envValue) {
+    return envValue.endsWith('/') ? envValue.slice(0, -1) : envValue;
+  }
+
+  if (typeof window === 'undefined') {
+    return localBaseUrl;
+  }
+
+  const { hostname, origin } = window.location;
+  if (hostname === 'localhost' || hostname === '127.0.0.1') {
+    return localBaseUrl;
+  }
+
+  if (hostname === 'api.kdeasylife.com') {
+    return origin;
+  }
+
+  return productionBaseUrl;
 }
 
 async function request(path, { method = 'GET', token, body } = {}) {
