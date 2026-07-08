@@ -41,6 +41,12 @@ flutter pub get
 flutter run --dart-define=KDS_API_BASE_URL=http://127.0.0.1:4000
 ```
 
+For Android production APK builds:
+
+```bash
+flutter build apk --release --dart-define=KDS_API_BASE_URL=https://api.kdeasylife.com
+```
+
 For web build:
 
 ```bash
