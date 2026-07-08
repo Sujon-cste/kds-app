@@ -69,11 +69,23 @@ cd frontend
 npm run build
 ```
 
-Set `VITE_API_BASE_URL` if the API is not on the default local URL.
+For production on `kdeasylife.com`, set the frontend API URL in [`frontend/.env.production`](/home/sujon/kds-app/frontend/.env.production):
+
+```env
+VITE_API_BASE_URL=https://api.kdeasylife.com
+```
+
+On the backend, make sure CORS allows the frontend origin in [`backend/.env`](/home/sujon/kds-app/backend/.env):
+
+```env
+CORS_ORIGINS=https://kdeasylife.com,https://www.kdeasylife.com,http://kdeasylife.com,http://www.kdeasylife.com
+```
 
 ## Deploy
 
 For AWS deployment, use the EC2/RDS guide in [DEPLOY_AWS.md](/home/sujon/kds-app/DEPLOY_AWS.md).
+
+For cPanel/Passenger hosting, make sure the startup file is [`backend/app.js`](/home/sujon/kds-app/backend/app.js). That file loads [`backend/src/server.js`](/home/sujon/kds-app/backend/src/server.js) using ES modules, which matches the backend `package.json`.
 
 ## Login
 
