@@ -965,7 +965,7 @@ function App() {
                   </div>
 
                   {restaurantForm.menu.map((item, index) => (
-                    <div className="menu-row" key={`${index}-${item.name}`}>
+                   <div className="menu-row" key={index}>
                       <div className="two-col">
                         <label>
                           Item name
