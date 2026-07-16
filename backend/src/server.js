@@ -404,6 +404,25 @@ app.put('/restaurants/:id', auth('admin'), asyncRoute(async (request, response) 
   }
 }));
 
+app.delete('/restaurants/:id', auth('admin'), asyncRoute(async (request, response) => {
+  const restaurantId = Number(request.params.id);
+  if (!restaurantId) {
+    response.status(400).json({ message: 'Invalid restaurant id' });
+    return;
+  }
+
+  const [deleteResult] = await pool.execute(
+    'UPDATE restaurants SET is_active = 0 WHERE id = ? AND is_active = 1',
+    [restaurantId],
+  );
+  if (deleteResult.affectedRows === 0) {
+    response.status(404).json({ message: 'Restaurant not found' });
+    return;
+  }
+
+  response.json({ success: true });
+}));
+
 app.post('/orders', auth('customer'), asyncRoute(async (request, response) => {
   const { restaurantName, customerName, phone, address, subtotal, deliveryFee, lines } =
     request.body;

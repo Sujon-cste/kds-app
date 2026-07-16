@@ -23,7 +23,10 @@ const statusTone = {
   rejected: 'danger',
 };
 
+const terminalStatuses = new Set(['delivered', 'rejected']);
+
 const categories = ['food', 'medicine', 'others'];
+const restaurantsPerPage = 7;
 
 const blankMenuItem = () => ({
   name: '',
@@ -87,6 +90,23 @@ function statusClass(status) {
   return `status status-${statusTone[status] || 'info'}`;
 }
 
+function normalizeOrderPayload(payload) {
+  if (Array.isArray(payload?.order)) {
+    return payload.order[0] || null;
+  }
+  if (payload?.order && typeof payload.order === 'object') {
+    return payload.order;
+  }
+  if (Array.isArray(payload?.orders)) {
+    return payload.orders[0] || null;
+  }
+  return null;
+}
+
+function normalizeOrders(value) {
+  return Array.isArray(value) ? value.filter((order) => order && typeof order === 'object') : [];
+}
+
 function App() {
   const [session, setSession] = useLocalStorageState('kds-react-session', null);
   const [cart, setCart] = useLocalStorageState('kds-react-cart', {
@@ -109,9 +129,13 @@ function App() {
   const [checkoutAddress, setCheckoutAddress] = useState('');
   const [checkoutName, setCheckoutName] = useState('');
   const [checkoutPhone, setCheckoutPhone] = useState('');
+  const [checkoutErrors, setCheckoutErrors] = useState({});
   const [restaurantForm, setRestaurantForm] = useState(blankRestaurant());
+  const [restaurantErrors, setRestaurantErrors] = useState({ menu: [] });
   const [editingRestaurantId, setEditingRestaurantId] = useState(null);
+  const [restaurantPage, setRestaurantPage] = useState(1);
   const [orderDrafts, setOrderDrafts] = useState({});
+  const [orderView, setOrderView] = useState('all');
   const [panel, setPanel] = useState('browse');
 
   const selectedRestaurant = useMemo(
@@ -131,6 +155,23 @@ function App() {
       return haystack.includes(query);
     });
   }, [restaurants, search]);
+
+  const restaurantPageCount = Math.max(1, Math.ceil(restaurants.length / restaurantsPerPage));
+  const pagedRestaurants = restaurants.slice(
+    (restaurantPage - 1) * restaurantsPerPage,
+    restaurantPage * restaurantsPerPage,
+  );
+  const normalizedOrders = normalizeOrders(orders);
+  const todayOrders = normalizedOrders.filter((order) => {
+    const createdAt = new Date(order.createdAt);
+    const today = new Date();
+    return (
+      createdAt.getFullYear() === today.getFullYear() &&
+      createdAt.getMonth() === today.getMonth() &&
+      createdAt.getDate() === today.getDate()
+    );
+  });
+  const visibleOrders = orderView === 'today' ? todayOrders : normalizedOrders;
 
   const cartSubtotal = cart.items.reduce((sum, entry) => sum + Number(entry.item.price) * entry.quantity, 0);
   const cartDeliveryFee = Number(cart.deliveryFee || 0);
@@ -153,7 +194,7 @@ function App() {
           if (!active) {
             return;
           }
-          setOrders(ordersPayload.orders || []);
+          setOrders(normalizeOrders(ordersPayload.orders));
         } else {
           setOrders([]);
         }
@@ -203,6 +244,12 @@ function App() {
     }
   }, [restaurants, selectedRestaurantId]);
 
+  useEffect(() => {
+    if (restaurantPage > restaurantPageCount) {
+      setRestaurantPage(restaurantPageCount);
+    }
+  }, [restaurantPage, restaurantPageCount]);
+
   function notify(type, message) {
     if (type === 'success') {
       setSuccess(message);
@@ -218,6 +265,39 @@ function App() {
     setSuccess('');
   }
 
+  function setCheckoutField(field, value) {
+    if (field === 'name') {
+      setCheckoutName(value);
+    }
+    if (field === 'phone') {
+      setCheckoutPhone(value);
+    }
+    if (field === 'address') {
+      setCheckoutAddress(value);
+    }
+    setCheckoutErrors((current) => ({ ...current, [field]: '' }));
+  }
+
+  function validateCheckout() {
+    const nextErrors = {};
+    const phone = checkoutPhone.trim();
+
+    if (!checkoutName.trim()) {
+      nextErrors.name = 'Enter the customer name.';
+    }
+    if (!phone) {
+      nextErrors.phone = 'Enter a mobile number.';
+    } else if (!/^01[3-9]\d{8}$/.test(phone)) {
+      nextErrors.phone = 'Enter a valid Bangladesh mobile number.';
+    }
+    if (!checkoutAddress.trim()) {
+      nextErrors.address = 'Enter a delivery address.';
+    }
+
+    setCheckoutErrors(nextErrors);
+    return Object.keys(nextErrors).length === 0;
+  }
+
   async function reloadData(token = session?.token) {
     clearNotifications();
     try {
@@ -225,7 +305,7 @@ function App() {
       setRestaurants(restaurantsPayload.restaurants || []);
       if (token) {
         const ordersPayload = await api.getOrders(token);
-        setOrders(ordersPayload.orders || []);
+        setOrders(normalizeOrders(ordersPayload.orders));
       }
     } catch (err) {
       notify('error', err.message);
@@ -343,8 +423,7 @@ function App() {
       notify('error', 'Your cart is empty.');
       return;
     }
-    if (!checkoutAddress.trim()) {
-      notify('error', 'Enter a delivery address.');
+    if (!validateCheckout()) {
       return;
     }
 
@@ -352,9 +431,9 @@ function App() {
     try {
       const payload = await api.createOrder(session.token, {
         restaurantName: cart.restaurantName,
-        customerName: checkoutName || session.user.name,
-        phone: checkoutPhone || session.user.phone,
-        address: checkoutAddress,
+        customerName: checkoutName.trim(),
+        phone: checkoutPhone.trim(),
+        address: checkoutAddress.trim(),
         subtotal: cartSubtotal,
         deliveryFee: cartDeliveryFee,
         lines: cart.items.map((entry) => ({
@@ -363,7 +442,12 @@ function App() {
         })),
       });
 
-      setOrders((current) => [payload.order[0], ...current]);
+      const createdOrder = normalizeOrderPayload(payload);
+      if (!createdOrder) {
+        throw new Error('Order was created, but the server returned an invalid order response.');
+      }
+
+      setOrders((current) => [createdOrder, ...normalizeOrders(current)]);
       setCart({
         restaurantId: null,
         restaurantName: '',
@@ -371,6 +455,8 @@ function App() {
         items: [],
       });
       setCheckoutAddress('');
+      setCheckoutErrors({});
+      setPanel('orders');
       notify('success', 'Order placed successfully.');
       await reloadData();
     } catch (err) {
@@ -382,6 +468,7 @@ function App() {
 
   function setRestaurantField(field, value) {
     setRestaurantForm((current) => ({ ...current, [field]: value }));
+    setRestaurantErrors((current) => ({ ...current, [field]: '' }));
   }
 
   function setMenuField(index, field, value) {
@@ -391,10 +478,16 @@ function App() {
       );
       return { ...current, menu };
     });
+    setRestaurantErrors((current) => {
+      const menu = [...(current.menu || [])];
+      menu[index] = { ...(menu[index] || {}), [field]: '' };
+      return { ...current, menu };
+    });
   }
 
   function addMenuRow() {
     setRestaurantForm((current) => ({ ...current, menu: [...current.menu, blankMenuItem()] }));
+    setRestaurantErrors((current) => ({ ...current, menu: [...(current.menu || []), {}] }));
   }
 
   function removeMenuRow(index) {
@@ -402,6 +495,56 @@ function App() {
       const menu = current.menu.filter((_, itemIndex) => itemIndex !== index);
       return { ...current, menu: menu.length ? menu : [blankMenuItem()] };
     });
+    setRestaurantErrors((current) => {
+      const menu = (current.menu || []).filter((_, itemIndex) => itemIndex !== index);
+      return { ...current, menu: menu.length ? menu : [{}] };
+    });
+  }
+
+  function validateRestaurantForm() {
+    const nextErrors = { menu: restaurantForm.menu.map(() => ({})) };
+
+    if (!restaurantForm.name.trim()) {
+      nextErrors.name = 'Enter restaurant name.';
+    }
+    if (!restaurantForm.cuisine.trim()) {
+      nextErrors.cuisine = 'Enter cuisine.';
+    }
+    if (!restaurantForm.rating || Number(restaurantForm.rating) <= 0) {
+      nextErrors.rating = 'Enter a valid rating.';
+    }
+    if (!restaurantForm.minutes || Number(restaurantForm.minutes) <= 0) {
+      nextErrors.minutes = 'Enter delivery minutes.';
+    }
+    if (!restaurantForm.deliveryFee || Number(restaurantForm.deliveryFee) < 0) {
+      nextErrors.deliveryFee = 'Enter a valid delivery fee.';
+    }
+    if (restaurantForm.colorHex.trim() && !/^(#|0x)[0-9a-fA-F]{6,8}$/.test(restaurantForm.colorHex.trim())) {
+      nextErrors.colorHex = 'Use a valid color like #FFE7A3.';
+    }
+
+    restaurantForm.menu.forEach((item, index) => {
+      if (!item.name.trim()) {
+        nextErrors.menu[index].name = 'Enter item name.';
+      }
+      if (!item.description.trim()) {
+        nextErrors.menu[index].description = 'Enter item description.';
+      }
+      if (!item.price || Number(item.price) <= 0) {
+        nextErrors.menu[index].price = 'Enter item price.';
+      }
+      if (!item.tag.trim()) {
+        nextErrors.menu[index].tag = 'Enter item tag.';
+      }
+    });
+
+    const hasMenuErrors = nextErrors.menu.some((item) => Object.values(item).some(Boolean));
+    const hasFormErrors = Object.entries(nextErrors).some(
+      ([field, value]) => field !== 'menu' && Boolean(value),
+    );
+
+    setRestaurantErrors(nextErrors);
+    return !hasFormErrors && !hasMenuErrors;
   }
 
   function openRestaurantEditor(restaurant) {
@@ -424,11 +567,15 @@ function App() {
         : [blankMenuItem()],
     });
     setPanel('admin');
+    setRestaurantErrors({
+      menu: (restaurant.menu || []).length ? restaurant.menu.map(() => ({})) : [{}],
+    });
   }
 
   function resetRestaurantForm() {
     setEditingRestaurantId(null);
     setRestaurantForm(blankRestaurant());
+    setRestaurantErrors({ menu: [{}] });
   }
 
   async function handleRestaurantSubmit(event) {
@@ -438,6 +585,9 @@ function App() {
       return;
     }
     clearNotifications();
+    if (!validateRestaurantForm()) {
+      return;
+    }
     setBusy(true);
     try {
       const payload = {
@@ -480,7 +630,10 @@ function App() {
 
   async function handleStatusSave(orderCode) {
     const draft = orderDrafts[orderCode] || {};
-    const order = orders.find((entry) => entry.id === orderCode);
+    const order = normalizeOrders(orders).find((entry) => entry.id === orderCode);
+    if (terminalStatuses.has(order?.status)) {
+      return;
+    }
     const status = draft.status || order?.status;
     if (!status) {
       return;
@@ -501,6 +654,32 @@ function App() {
     }
   }
 
+  async function handleDeleteRestaurant(restaurant) {
+    if (!session?.token) {
+      notify('error', 'Sign in as admin first.');
+      return;
+    }
+    const confirmed = window.confirm(`Delete ${restaurant.name}?`);
+    if (!confirmed) {
+      return;
+    }
+
+    clearNotifications();
+    setBusy(true);
+    try {
+      await api.deleteRestaurant(session.token, restaurant.id);
+      if (editingRestaurantId === restaurant.id) {
+        resetRestaurantForm();
+      }
+      await reloadData();
+      notify('success', 'Restaurant deleted.');
+    } catch (err) {
+      notify('error', err.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
   const selectedMenuItems = selectedRestaurant?.menu || [];
   const isAdmin = session?.user?.role === 'admin';
 
@@ -512,13 +691,6 @@ function App() {
           <h1>Khilkhet Delivery Service</h1>
         </div>
         <div className="topbar-actions">
-          <button
-            className="chip"
-            onClick={() => setPanel(isAdmin ? 'orders' : 'browse')}
-            type="button"
-          >
-            {isAdmin ? 'Admin view' : 'Browse'}
-          </button>
           {session?.user ? (
             <>
               <div className="user-pill">
@@ -548,7 +720,7 @@ function App() {
                 <span>restaurants</span>
               </div>
               <div>
-                <strong>{orders.length}</strong>
+                <strong>{normalizeOrders(orders).length}</strong>
                 <span>orders</span>
               </div>
               <div>
@@ -655,25 +827,26 @@ function App() {
           </div>
         </section>
 
-        <section className="toolbar panel">
-          <div className="search-box">
-            <label>
-              Search restaurants or menu items
-              <input
-                value={search}
-                onChange={(event) => setSearch(event.target.value)}
-                placeholder="Biryani, burger, soup..."
-              />
-            </label>
-          </div>
+        <section className="nav-panel panel">
           <div className="toolbar-actions">
-            <button
-              className={panel === 'browse' ? 'button button-primary' : 'button button-ghost'}
-              type="button"
-              onClick={() => setPanel('browse')}
-            >
-              Browse
-            </button>
+            {!isAdmin ? (
+              <>
+                <button
+                  className={panel === 'browse' ? 'button button-primary' : 'button button-ghost'}
+                  type="button"
+                  onClick={() => setPanel('browse')}
+                >
+                  Restaurants
+                </button>
+                <button
+                  className={panel === 'cart' ? 'button button-primary' : 'button button-ghost'}
+                  type="button"
+                  onClick={() => setPanel('cart')}
+                >
+                  Cart
+                </button>
+              </>
+            ) : null}
             <button
               className={panel === 'orders' ? 'button button-primary' : 'button button-ghost'}
               type="button"
@@ -687,14 +860,26 @@ function App() {
                 type="button"
                 onClick={() => setPanel('admin')}
               >
-                Admin
+                Restaurant
               </button>
             ) : null}
-            <button className="button button-ghost" type="button" onClick={reloadData}>
-              Refresh
-            </button>
           </div>
         </section>
+
+        {panel === 'browse' ? (
+        <section className="toolbar panel">
+          <div className="search-box">
+            <label>
+              Search restaurants or menu items
+              <input
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+                placeholder="Biryani, burger, soup..."
+              />
+            </label>
+          </div>
+        </section>
+        ) : null}
 
         {error ? <div className="alert alert-error">{error}</div> : null}
         {success ? <div className="alert alert-success">{success}</div> : null}
@@ -774,54 +959,13 @@ function App() {
           </section>
         ) : null}
 
-        {panel === 'orders' ? (
-          <section className="content-grid">
+        {panel === 'cart' && !isAdmin ? (
+          <section className="content-single">
             <div className="panel">
               <div className="section-head">
                 <div>
-                  <p className="eyebrow">Your orders</p>
-                  <h3>{isAdmin ? 'All orders' : 'Order history'}</h3>
-                </div>
-                <span className="muted">{orders.length} records</span>
-              </div>
-
-              <div className="orders-list">
-                {orders.map((order) => (
-                  <article className="order-card" key={order.id}>
-                    <div className="order-card-top">
-                      <div>
-                        <strong>{order.id}</strong>
-                        <p>{order.restaurantName}</p>
-                      </div>
-                      <span className={statusClass(order.status)}>{statusLabels[order.status]}</span>
-                    </div>
-                    <div className="order-meta">
-                      <span>{order.customerName}</span>
-                      <span>{order.phone}</span>
-                      <span>{new Date(order.createdAt).toLocaleString()}</span>
-                    </div>
-                    <div className="order-lines">
-                      {order.lines.map((line, index) => (
-                        <div key={`${order.id}-${index}`}>
-                          {line.quantity}x {line.item.name}
-                        </div>
-                      ))}
-                    </div>
-                    <div className="order-total">
-                      <span>{formatMoney(order.total)}</span>
-                      <span>{order.address}</span>
-                    </div>
-                  </article>
-                ))}
-                {orders.length === 0 ? <div className="empty-state">No orders yet.</div> : null}
-              </div>
-            </div>
-
-            <div className="panel">
-              <div className="section-head">
-                <div>
-                  <p className="eyebrow">Checkout</p>
-                  <h3>Place the current cart</h3>
+                  <p className="eyebrow">Cart</p>
+                  <h3>Review and place your order</h3>
                 </div>
                 <span className="muted">
                   {cart.items.length ? `${cart.items.length} items` : 'Cart empty'}
@@ -847,23 +991,39 @@ function App() {
                   </div>
                 ))}
 
+                {cart.items.length === 0 ? (
+                  <div className="empty-state">Add menu items from Restaurants before placing an order.</div>
+                ) : null}
+
                 <form className="stack" onSubmit={handleCheckout}>
                   <label>
                     Customer name
-                    <input value={checkoutName} onChange={(e) => setCheckoutName(e.target.value)} />
+                    <input
+                      aria-invalid={checkoutErrors.name ? 'true' : 'false'}
+                      value={checkoutName}
+                      onChange={(event) => setCheckoutField('name', event.target.value)}
+                    />
+                    {checkoutErrors.name ? <span className="field-error">{checkoutErrors.name}</span> : null}
                   </label>
                   <label>
                     Phone
-                    <input value={checkoutPhone} onChange={(e) => setCheckoutPhone(e.target.value)} />
+                    <input
+                      aria-invalid={checkoutErrors.phone ? 'true' : 'false'}
+                      value={checkoutPhone}
+                      onChange={(event) => setCheckoutField('phone', event.target.value)}
+                    />
+                    {checkoutErrors.phone ? <span className="field-error">{checkoutErrors.phone}</span> : null}
                   </label>
                   <label>
                     Address
                     <textarea
+                      aria-invalid={checkoutErrors.address ? 'true' : 'false'}
                       rows="4"
                       value={checkoutAddress}
-                      onChange={(e) => setCheckoutAddress(e.target.value)}
+                      onChange={(event) => setCheckoutField('address', event.target.value)}
                       placeholder="House, road, area"
                     />
+                    {checkoutErrors.address ? <span className="field-error">{checkoutErrors.address}</span> : null}
                   </label>
 
                   <div className="summary">
@@ -881,10 +1041,124 @@ function App() {
                     </div>
                   </div>
 
-                  <button className="button button-primary" disabled={busy} type="submit">
+                  <button className="button button-primary" disabled={busy || !cart.items.length} type="submit">
                     Place order
                   </button>
                 </form>
+              </div>
+            </div>
+          </section>
+        ) : null}
+
+        {panel === 'orders' ? (
+          <section className="content-single">
+            <div className="panel">
+              <div className="section-head">
+                <div>
+                  <p className="eyebrow">Your orders</p>
+                  <h3>{isAdmin ? 'All orders' : 'Order history'}</h3>
+                </div>
+                <span className="muted">{visibleOrders.length} records</span>
+              </div>
+
+              <div className="order-tabs">
+                <button
+                  className={orderView === 'all' ? 'active' : ''}
+                  type="button"
+                  onClick={() => setOrderView('all')}
+                >
+                  All orders
+                </button>
+                <button
+                  className={orderView === 'today' ? 'active' : ''}
+                  type="button"
+                  onClick={() => setOrderView('today')}
+                >
+                  Today's orders
+                </button>
+              </div>
+
+              <div className="orders-list">
+                {visibleOrders.map((order) => (
+                  <article className="order-card" key={order.id}>
+                    <div className="order-card-top">
+                      <div>
+                        <strong>{order.id}</strong>
+                        <p>{order.restaurantName}</p>
+                      </div>
+                      <span className={statusClass(order.status)}>{statusLabels[order.status]}</span>
+                    </div>
+                    <div className="order-meta">
+                      <span>{order.customerName}</span>
+                      <span>{order.phone}</span>
+                      <span>{new Date(order.createdAt).toLocaleString()}</span>
+                    </div>
+                    <div className="order-lines">
+                      {normalizeOrders(order.lines).map((line, index) => (
+                        <div key={`${order.id}-${index}`}>
+                          {line.quantity}x {line.item?.name || 'Item'}
+                        </div>
+                      ))}
+                    </div>
+                    <div className="order-total">
+                      <span>{formatMoney(order.total)}</span>
+                      <span>{order.address}</span>
+                    </div>
+                    {isAdmin ? (
+                      <div className="order-admin-controls">
+                        <div className="two-col">
+                          <label>
+                            Status
+                            <select
+                              disabled={terminalStatuses.has(order.status)}
+                              value={orderDrafts[order.id]?.status || order.status}
+                              onChange={(event) =>
+                                setOrderDrafts((current) => ({
+                                  ...current,
+                                  [order.id]: {
+                                    ...(current[order.id] || {}),
+                                    status: event.target.value,
+                                  },
+                                }))
+                              }
+                            >
+                              {Object.keys(statusLabels).map((status) => (
+                                <option key={status} value={status}>
+                                  {statusLabels[status]}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+                          <label>
+                            Rider name
+                            <input
+                              disabled={terminalStatuses.has(order.status)}
+                              value={orderDrafts[order.id]?.riderName ?? order.riderName ?? ''}
+                              onChange={(event) =>
+                                setOrderDrafts((current) => ({
+                                  ...current,
+                                  [order.id]: {
+                                    ...(current[order.id] || {}),
+                                    riderName: event.target.value,
+                                  },
+                                }))
+                              }
+                            />
+                          </label>
+                        </div>
+                        <button
+                          className="button button-primary"
+                          disabled={busy || terminalStatuses.has(order.status)}
+                          type="button"
+                          onClick={() => handleStatusSave(order.id)}
+                        >
+                          Save status
+                        </button>
+                      </div>
+                    ) : null}
+                  </article>
+                ))}
+                {visibleOrders.length === 0 ? <div className="empty-state">No orders found.</div> : null}
               </div>
             </div>
           </section>
@@ -908,95 +1182,122 @@ function App() {
                   <label>
                     Name
                     <input
+                      aria-invalid={restaurantErrors.name ? 'true' : 'false'}
                       value={restaurantForm.name}
                       onChange={(event) => setRestaurantField('name', event.target.value)}
                     />
+                    {restaurantErrors.name ? <span className="field-error">{restaurantErrors.name}</span> : null}
                   </label>
                   <label>
                     Cuisine
                     <input
+                      aria-invalid={restaurantErrors.cuisine ? 'true' : 'false'}
                       value={restaurantForm.cuisine}
                       onChange={(event) => setRestaurantField('cuisine', event.target.value)}
                     />
+                    {restaurantErrors.cuisine ? <span className="field-error">{restaurantErrors.cuisine}</span> : null}
                   </label>
                 </div>
                 <div className="three-col">
                   <label>
                     Rating
                     <input
+                      aria-invalid={restaurantErrors.rating ? 'true' : 'false'}
                       type="number"
                       step="0.1"
                       value={restaurantForm.rating}
                       onChange={(event) => setRestaurantField('rating', event.target.value)}
                     />
+                    {restaurantErrors.rating ? <span className="field-error">{restaurantErrors.rating}</span> : null}
                   </label>
                   <label>
                     Minutes
                     <input
+                      aria-invalid={restaurantErrors.minutes ? 'true' : 'false'}
                       type="number"
                       value={restaurantForm.minutes}
                       onChange={(event) => setRestaurantField('minutes', event.target.value)}
                     />
+                    {restaurantErrors.minutes ? <span className="field-error">{restaurantErrors.minutes}</span> : null}
                   </label>
                   <label>
                     Delivery fee
                     <input
+                      aria-invalid={restaurantErrors.deliveryFee ? 'true' : 'false'}
                       type="number"
                       value={restaurantForm.deliveryFee}
                       onChange={(event) => setRestaurantField('deliveryFee', event.target.value)}
                     />
+                    {restaurantErrors.deliveryFee ? (
+                      <span className="field-error">{restaurantErrors.deliveryFee}</span>
+                    ) : null}
                   </label>
                 </div>
                 <label>
                   Color
                   <input
+                    aria-invalid={restaurantErrors.colorHex ? 'true' : 'false'}
                     value={restaurantForm.colorHex}
                     onChange={(event) => setRestaurantField('colorHex', event.target.value)}
                     placeholder="#FFE7A3"
                   />
+                  {restaurantErrors.colorHex ? <span className="field-error">{restaurantErrors.colorHex}</span> : null}
                 </label>
 
                 <div className="menu-editor">
                   <div className="menu-editor-head">
                     <strong>Menu items</strong>
-                    <button className="button button-ghost" type="button" onClick={addMenuRow}>
-                      Add row
-                    </button>
                   </div>
 
                   {restaurantForm.menu.map((item, index) => (
-                   <div className="menu-row" key={index}>
+                    <div className="menu-row" key={index}>
                       <div className="two-col">
                         <label>
                           Item name
                           <input
+                            aria-invalid={restaurantErrors.menu?.[index]?.name ? 'true' : 'false'}
                             value={item.name}
                             onChange={(event) => setMenuField(index, 'name', event.target.value)}
                           />
+                          {restaurantErrors.menu?.[index]?.name ? (
+                            <span className="field-error">{restaurantErrors.menu[index].name}</span>
+                          ) : null}
                         </label>
                         <label>
                           Tag
                           <input
+                            aria-invalid={restaurantErrors.menu?.[index]?.tag ? 'true' : 'false'}
                             value={item.tag}
                             onChange={(event) => setMenuField(index, 'tag', event.target.value)}
                           />
+                          {restaurantErrors.menu?.[index]?.tag ? (
+                            <span className="field-error">{restaurantErrors.menu[index].tag}</span>
+                          ) : null}
                         </label>
                       </div>
                       <label>
                         Description
                         <input
+                          aria-invalid={restaurantErrors.menu?.[index]?.description ? 'true' : 'false'}
                           value={item.description}
                           onChange={(event) => setMenuField(index, 'description', event.target.value)}
                         />
+                        {restaurantErrors.menu?.[index]?.description ? (
+                          <span className="field-error">{restaurantErrors.menu[index].description}</span>
+                        ) : null}
                       </label>
-                      <div className="three-col">
+                      <div className="menu-row-bottom">
                         <label>
                           Price
                           <input
+                            aria-invalid={restaurantErrors.menu?.[index]?.price ? 'true' : 'false'}
                             type="number"
                             value={item.price}
                             onChange={(event) => setMenuField(index, 'price', event.target.value)}
                           />
+                          {restaurantErrors.menu?.[index]?.price ? (
+                            <span className="field-error">{restaurantErrors.menu[index].price}</span>
+                          ) : null}
                         </label>
                         <label>
                           Category
@@ -1012,6 +1313,13 @@ function App() {
                           </select>
                         </label>
                         <div className="row-actions">
+                          <button
+                            className="button button-ghost"
+                            type="button"
+                            onClick={addMenuRow}
+                          >
+                            Add row
+                          </button>
                           <button
                             className="button button-ghost"
                             type="button"
@@ -1032,93 +1340,63 @@ function App() {
             </div>
 
             <div className="panel">
-              <div className="section-head">
-                <div>
-                  <p className="eyebrow">Manage orders</p>
-                  <h3>Update order status</h3>
-                </div>
-                <span className="muted">{orders.length} records</span>
-              </div>
-
-              <div className="orders-list">
-                {orders.map((order) => (
-                  <article className="order-card" key={order.id}>
-                    <div className="order-card-top">
-                      <div>
-                        <strong>{order.id}</strong>
-                        <p>{order.restaurantName}</p>
-                      </div>
-                      <span className={statusClass(order.status)}>{statusLabels[order.status]}</span>
-                    </div>
-                    <div className="two-col">
-                      <label>
-                        Status
-                        <select
-                          value={orderDrafts[order.id]?.status || order.status}
-                          onChange={(event) =>
-                            setOrderDrafts((current) => ({
-                              ...current,
-                              [order.id]: {
-                                ...(current[order.id] || {}),
-                                status: event.target.value,
-                              },
-                            }))
-                          }
-                        >
-                          {Object.keys(statusLabels).map((status) => (
-                            <option key={status} value={status}>
-                              {statusLabels[status]}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
-                      <label>
-                        Rider name
-                        <input
-                          value={orderDrafts[order.id]?.riderName ?? order.riderName ?? ''}
-                          onChange={(event) =>
-                            setOrderDrafts((current) => ({
-                              ...current,
-                              [order.id]: {
-                                ...(current[order.id] || {}),
-                                riderName: event.target.value,
-                              },
-                            }))
-                          }
-                        />
-                      </label>
-                    </div>
-                    <button
-                      className="button button-primary"
-                      disabled={busy}
-                      type="button"
-                      onClick={() => handleStatusSave(order.id)}
-                    >
-                      Save status
-                    </button>
-                  </article>
-                ))}
-                {orders.length === 0 ? <div className="empty-state">No orders to manage.</div> : null}
-              </div>
-
               <div className="restaurant-list">
                 <div className="section-head">
                   <div>
                     <p className="eyebrow">Existing restaurants</p>
-                    <h3>Edit quickly</h3>
+                    <h3>Edit or delete restaurants</h3>
                   </div>
+                  <span className="muted">{restaurants.length} records</span>
                 </div>
-                {restaurants.map((restaurant) => (
-                  <button
-                    className="admin-restaurant-row"
-                    key={restaurant.id}
-                    type="button"
-                    onClick={() => openRestaurantEditor(restaurant)}
-                  >
-                    <span>{restaurant.name}</span>
-                    <small>{restaurant.cuisine}</small>
-                  </button>
+                {pagedRestaurants.map((restaurant) => (
+                  <article className="admin-restaurant-row" key={restaurant.id}>
+                    <div>
+                      <span>{restaurant.name}</span>
+                      <small>{restaurant.cuisine}</small>
+                    </div>
+                    <div className="restaurant-row-actions">
+                      <button
+                        className="button button-ghost"
+                        type="button"
+                        onClick={() => openRestaurantEditor(restaurant)}
+                      >
+                        Edit
+                      </button>
+                      <button
+                        className="button button-danger"
+                        disabled={busy}
+                        type="button"
+                        onClick={() => handleDeleteRestaurant(restaurant)}
+                      >
+                        Delete
+                      </button>
+                    </div>
+                  </article>
                 ))}
+                {restaurants.length === 0 ? <div className="empty-state">No restaurants found.</div> : null}
+                {restaurants.length > restaurantsPerPage ? (
+                  <div className="pagination">
+                    <button
+                      className="button button-ghost"
+                      disabled={restaurantPage === 1}
+                      type="button"
+                      onClick={() => setRestaurantPage((page) => Math.max(1, page - 1))}
+                    >
+                      Previous
+                    </button>
+                    <span className="muted">
+                      Page {restaurantPage} of {restaurantPageCount}
+                    </span>
+                    <button
+                      className="button button-ghost"
+                      disabled={restaurantPage === restaurantPageCount}
+                      type="button"
+                      onClick={() => setRestaurantPage((page) => Math.min(restaurantPageCount, page + 1))}
+                    >
+                      Next
+                    </button>
+                  </div>
+                ) : null}
               </div>
             </div>
           </section>

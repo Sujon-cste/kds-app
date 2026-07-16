@@ -57,6 +57,8 @@ export const api = {
   createRestaurant: (token, body) => request('/restaurants', { method: 'POST', token, body }),
   updateRestaurant: (token, id, body) =>
     request(`/restaurants/${id}`, { method: 'PUT', token, body }),
+  deleteRestaurant: (token, id) =>
+    request(`/restaurants/${id}`, { method: 'DELETE', token }),
   updateOrderStatus: (token, orderCode, body) =>
     request(`/orders/${orderCode}/status`, { method: 'PATCH', token, body }),
 };
