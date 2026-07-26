@@ -815,7 +815,7 @@ function App() {
                 >
                   Restaurants
                 </button>
-                {session?.user ? (
+               
                   <button
                     className={panel === 'cart' ? 'button button-primary' : 'button button-ghost'}
                     type="button"
@@ -823,7 +823,7 @@ function App() {
                   >
                     Cart
                   </button>
-                ) : null}
+               
               </>
             ) : null}
             {session?.user ? (
@@ -925,7 +925,7 @@ function App() {
           </section>
         ) : null}
 
-        {panel === 'cart' && session?.user && !isAdmin ? (
+        {panel === 'cart'  && !isAdmin ? (
           <section className="content-single">
             <div className="panel">
               <div className="section-head">
@@ -1408,7 +1408,7 @@ function App() {
                       onChange={(event) =>
                         setSignInForm((current) => ({ ...current, phone: event.target.value }))
                       }
-                      placeholder="01700000000"
+                      placeholder="017....."
                     />
                   </label>
                   <label>
