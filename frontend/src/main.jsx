@@ -123,6 +123,9 @@ function App() {
   const [success, setSuccess] = useState('');
   const [search, setSearch] = useState('');
   const [authMode, setAuthMode] = useState('signin');
+  const [authOpen, setAuthOpen] = useState(false);
+  const [logoutOpen, setLogoutOpen] = useState(false);
+  const [logoutBusy, setLogoutBusy] = useState(false);
   const [signInForm, setSignInForm] = useState(blankSignIn);
   const [signUpForm, setSignUpForm] = useState(blankSignUp);
   const [selectedRestaurantId, setSelectedRestaurantId] = useState(null);
@@ -321,6 +324,7 @@ function App() {
       setSession(payload);
       setSignInForm(blankSignIn);
       setAuthMode('signin');
+      setAuthOpen(false);
       setPanel(payload.user.role === 'admin' ? 'orders' : 'browse');
       await reloadData(payload.token);
       notify('success', 'Signed in successfully.');
@@ -340,6 +344,7 @@ function App() {
       setSession(payload);
       setSignUpForm(blankSignUp);
       setAuthMode('signin');
+      setAuthOpen(false);
       setPanel('browse');
       await reloadData(payload.token);
       notify('success', 'Account created.');
@@ -350,7 +355,7 @@ function App() {
     }
   }
 
-  function handleLogout() {
+  function clearSessionState() {
     setSession(null);
     setOrders([]);
     setCart({
@@ -362,6 +367,30 @@ function App() {
     setPanel('browse');
     setSuccess('');
     setError('');
+    setAuthOpen(false);
+    setAuthMode('signin');
+    setBusy(false);
+  }
+
+  function openLogoutConfirm() {
+    setLogoutOpen(true);
+  }
+
+  function cancelLogout() {
+    if (logoutBusy) {
+      return;
+    }
+    setLogoutOpen(false);
+  }
+
+  function handleLogout() {
+    setLogoutBusy(true);
+    setBusy(true);
+    window.setTimeout(() => {
+      clearSessionState();
+      setLogoutBusy(false);
+      setLogoutOpen(false);
+    }, 450);
   }
 
   function handleAddToCart(restaurant, item) {
@@ -683,12 +712,24 @@ function App() {
   const selectedMenuItems = selectedRestaurant?.menu || [];
   const isAdmin = session?.user?.role === 'admin';
 
+  function openAuth(mode = 'signin') {
+    setAuthMode(mode);
+    setAuthOpen(true);
+  }
+
   return (
     <div className="shell">
       <header className="topbar">
-        <div>
-          <div className="eyebrow">KDS React Web</div>
-          <h1>Khilkhet Delivery Service</h1>
+        <div className="brand-lockup">
+          <img
+            alt="KD Easy Life logo"
+            className="brand-logo"
+            src="/kd-easy-life-logo.jpeg"
+          />
+          <div>
+            <div className="eyebrow">KD Easy Life</div>
+            <h1>Food Delivery</h1>
+          </div>
         </div>
         <div className="topbar-actions">
           {session?.user ? (
@@ -697,10 +738,15 @@ function App() {
                 <strong>{session.user.name}</strong>
                 <span>{session.user.role}</span>
               </div>
-              <button className="button button-ghost" onClick={handleLogout} type="button">
+              <button className="button button-ghost" onClick={openLogoutConfirm} type="button">
                 Logout
               </button>
             </>
+          ) : null}
+          {!session?.user ? (
+            <button className="button button-primary" type="button" onClick={() => openAuth('signin')}>
+              Login
+            </button>
           ) : null}
         </div>
       </header>
@@ -709,11 +755,21 @@ function App() {
         <section className="hero panel">
           <div className="hero-copy">
             <p className="eyebrow">Browser frontend for the existing Node API</p>
-            <h2>Fast ordering, admin tools, and a clean web checkout flow.</h2>
+            <h2>Hot meals, fast delivery, and checkout in just a few taps.</h2>
             <p>
               This React app talks to your current backend without changing the API contract.
               Run it locally for development or build it for cPanel deployment later.
             </p>
+            <div className="hero-search">
+              <label>
+                Search restaurants or menu items
+                <input
+                  value={search}
+                  onChange={(event) => setSearch(event.target.value)}
+                  placeholder="Biryani, burger, soup..."
+                />
+              </label>
+            </div>
             <div className="hero-stats">
               <div>
                 <strong>{restaurants.length}</strong>
@@ -729,107 +785,28 @@ function App() {
               </div>
             </div>
           </div>
-
-          <div className="auth-card panel-inset">
-            {!session?.user ? (
-              <>
-                <div className="segmented">
-                  <button
-                    className={authMode === 'signin' ? 'active' : ''}
-                    type="button"
-                    onClick={() => setAuthMode('signin')}
-                  >
-                    Sign in
-                  </button>
-                  <button
-                    className={authMode === 'signup' ? 'active' : ''}
-                    type="button"
-                    onClick={() => setAuthMode('signup')}
-                  >
-                    Sign up
-                  </button>
-                </div>
-
-                {authMode === 'signin' ? (
-                  <form className="stack" onSubmit={handleSignIn}>
-                    <label>
-                      Phone
-                      <input
-                        value={signInForm.phone}
-                        onChange={(event) =>
-                          setSignInForm((current) => ({ ...current, phone: event.target.value }))
-                        }
-                        placeholder="01700000000"
-                      />
-                    </label>
-                    <label>
-                      Password
-                      <input
-                        type="password"
-                        value={signInForm.password}
-                        onChange={(event) =>
-                          setSignInForm((current) => ({ ...current, password: event.target.value }))
-                        }
-                        placeholder="Password"
-                      />
-                    </label>
-                    <button className="button button-primary" disabled={busy} type="submit">
-                      Sign in
-                    </button>
-                  </form>
-                ) : (
-                  <form className="stack" onSubmit={handleSignUp}>
-                    <label>
-                      Name
-                      <input
-                        value={signUpForm.name}
-                        onChange={(event) =>
-                          setSignUpForm((current) => ({ ...current, name: event.target.value }))
-                        }
-                        placeholder="Your name"
-                      />
-                    </label>
-                    <label>
-                      Phone
-                      <input
-                        value={signUpForm.phone}
-                        onChange={(event) =>
-                          setSignUpForm((current) => ({ ...current, phone: event.target.value }))
-                        }
-                        placeholder="01xxxxxxxxx"
-                      />
-                    </label>
-                    <label>
-                      Password
-                      <input
-                        type="password"
-                        value={signUpForm.password}
-                        onChange={(event) =>
-                          setSignUpForm((current) => ({ ...current, password: event.target.value }))
-                        }
-                        placeholder="6+ characters"
-                      />
-                    </label>
-                    <button className="button button-primary" disabled={busy} type="submit">
-                      Create account
-                    </button>
-                  </form>
-                )}
-              </>
-            ) : (
-              <div className="signed-in-box">
-                <span className="eyebrow">Signed in</span>
-                <h3>{session.user.name}</h3>
-                <p>{session.user.phone}</p>
-                <p className="muted">Role: {session.user.role}</p>
-              </div>
-            )}
+          <div className="hero-scene" aria-hidden="true">
+            <div className="scene-card scene-banner">
+              <span>Fresh table</span>
+              <strong>Warm food, quick service</strong>
+            </div>
+            <div className="scene-plate scene-plate-large">
+              <div className="scene-bowl"></div>
+              <div className="scene-garnish scene-garnish-one"></div>
+              <div className="scene-garnish scene-garnish-two"></div>
+            </div>
+            <div className="scene-plate scene-plate-small"></div>
+            <div className="scene-cutlery scene-cutlery-left"></div>
+            <div className="scene-cutlery scene-cutlery-right"></div>
+            <div className="scene-steam scene-steam-one"></div>
+            <div className="scene-steam scene-steam-two"></div>
+            <div className="scene-mat"></div>
           </div>
         </section>
 
         <section className="nav-panel panel">
           <div className="toolbar-actions">
-            {!isAdmin ? (
+            {!session?.user || !isAdmin ? (
               <>
                 <button
                   className={panel === 'browse' ? 'button button-primary' : 'button button-ghost'}
@@ -838,22 +815,26 @@ function App() {
                 >
                   Restaurants
                 </button>
-                <button
-                  className={panel === 'cart' ? 'button button-primary' : 'button button-ghost'}
-                  type="button"
-                  onClick={() => setPanel('cart')}
-                >
-                  Cart
-                </button>
+                {session?.user ? (
+                  <button
+                    className={panel === 'cart' ? 'button button-primary' : 'button button-ghost'}
+                    type="button"
+                    onClick={() => setPanel('cart')}
+                  >
+                    Cart
+                  </button>
+                ) : null}
               </>
             ) : null}
-            <button
-              className={panel === 'orders' ? 'button button-primary' : 'button button-ghost'}
-              type="button"
-              onClick={() => setPanel('orders')}
-            >
-              Orders
-            </button>
+            {session?.user ? (
+              <button
+                className={panel === 'orders' ? 'button button-primary' : 'button button-ghost'}
+                type="button"
+                onClick={() => setPanel('orders')}
+              >
+                Orders
+              </button>
+            ) : null}
             {isAdmin ? (
               <button
                 className={panel === 'admin' ? 'button button-primary' : 'button button-ghost'}
@@ -865,21 +846,6 @@ function App() {
             ) : null}
           </div>
         </section>
-
-        {panel === 'browse' ? (
-        <section className="toolbar panel">
-          <div className="search-box">
-            <label>
-              Search restaurants or menu items
-              <input
-                value={search}
-                onChange={(event) => setSearch(event.target.value)}
-                placeholder="Biryani, burger, soup..."
-              />
-            </label>
-          </div>
-        </section>
-        ) : null}
 
         {error ? <div className="alert alert-error">{error}</div> : null}
         {success ? <div className="alert alert-success">{success}</div> : null}
@@ -959,7 +925,7 @@ function App() {
           </section>
         ) : null}
 
-        {panel === 'cart' && !isAdmin ? (
+        {panel === 'cart' && session?.user && !isAdmin ? (
           <section className="content-single">
             <div className="panel">
               <div className="section-head">
@@ -1050,7 +1016,7 @@ function App() {
           </section>
         ) : null}
 
-        {panel === 'orders' ? (
+        {panel === 'orders' && session?.user ? (
           <section className="content-single">
             <div className="panel">
               <div className="section-head">
@@ -1400,6 +1366,136 @@ function App() {
               </div>
             </div>
           </section>
+        ) : null}
+
+        {authOpen && !session?.user ? (
+          <div className="auth-modal" role="dialog" aria-modal="true" aria-label="Authentication dialog">
+            <div className="auth-modal-backdrop" onClick={() => setAuthOpen(false)} />
+            <div className="auth-modal-card panel">
+              <div className="auth-modal-head">
+                <div>
+                  <p className="eyebrow">Account access</p>
+                  <h3>{authMode === 'signin' ? 'Sign in' : 'Create account'}</h3>
+                </div>
+                <button className="button button-ghost" type="button" onClick={() => setAuthOpen(false)}>
+                  Close
+                </button>
+              </div>
+
+              <div className="segmented">
+                <button
+                  className={authMode === 'signin' ? 'active' : ''}
+                  type="button"
+                  onClick={() => setAuthMode('signin')}
+                >
+                  Sign in
+                </button>
+                <button
+                  className={authMode === 'signup' ? 'active' : ''}
+                  type="button"
+                  onClick={() => setAuthMode('signup')}
+                >
+                  Sign up
+                </button>
+              </div>
+
+              {authMode === 'signin' ? (
+                <form className="stack" onSubmit={handleSignIn}>
+                  <label>
+                    Phone
+                    <input
+                      value={signInForm.phone}
+                      onChange={(event) =>
+                        setSignInForm((current) => ({ ...current, phone: event.target.value }))
+                      }
+                      placeholder="01700000000"
+                    />
+                  </label>
+                  <label>
+                    Password
+                    <input
+                      type="password"
+                      value={signInForm.password}
+                      onChange={(event) =>
+                        setSignInForm((current) => ({ ...current, password: event.target.value }))
+                      }
+                      placeholder="Password"
+                    />
+                  </label>
+                  <button className="button button-primary" disabled={busy} type="submit">
+                    Sign in
+                  </button>
+                </form>
+              ) : (
+                <form className="stack" onSubmit={handleSignUp}>
+                  <label>
+                    Name
+                    <input
+                      value={signUpForm.name}
+                      onChange={(event) =>
+                        setSignUpForm((current) => ({ ...current, name: event.target.value }))
+                      }
+                      placeholder="Your name"
+                    />
+                  </label>
+                  <label>
+                    Phone
+                    <input
+                      value={signUpForm.phone}
+                      onChange={(event) =>
+                        setSignUpForm((current) => ({ ...current, phone: event.target.value }))
+                      }
+                      placeholder="01xxxxxxxxx"
+                    />
+                  </label>
+                  <label>
+                    Password
+                    <input
+                      type="password"
+                      value={signUpForm.password}
+                      onChange={(event) =>
+                        setSignUpForm((current) => ({ ...current, password: event.target.value }))
+                      }
+                      placeholder="6+ characters"
+                    />
+                  </label>
+                  <button className="button button-primary" disabled={busy} type="submit">
+                    Create account
+                  </button>
+                </form>
+              )}
+            </div>
+          </div>
+        ) : null}
+
+        {logoutOpen && session?.user ? (
+          <div className="auth-modal" role="dialog" aria-modal="true" aria-label="Logout confirmation dialog">
+            <div className="auth-modal-backdrop" onClick={cancelLogout} />
+            <div className="auth-modal-card panel logout-modal-card">
+              <div className="auth-modal-head">
+                <div>
+                  <p className="eyebrow">Confirm sign out</p>
+                  <h3>{logoutBusy ? 'Signing out...' : 'Leave your account?'}</h3>
+                </div>
+                <button className="button button-ghost" type="button" onClick={cancelLogout} disabled={logoutBusy}>
+                  Close
+                </button>
+              </div>
+              <p className="logout-message">
+                {logoutBusy
+                  ? 'Please wait while we clear the session.'
+                  : 'You will return to the login state after signing out.'}
+              </p>
+              <div className="logout-actions">
+                <button className="button button-ghost" type="button" onClick={cancelLogout} disabled={logoutBusy}>
+                  Cancel
+                </button>
+                <button className="button button-danger" type="button" onClick={handleLogout} disabled={logoutBusy}>
+                  {logoutBusy ? 'Signing out...' : 'Sign out'}
+                </button>
+              </div>
+            </div>
+          </div>
         ) : null}
       </main>
     </div>
