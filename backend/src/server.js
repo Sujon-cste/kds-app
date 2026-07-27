@@ -579,8 +579,9 @@ app.use((error, request, response, next) => {
   response.status(500).json({ message: error.message });
 });
 
-await ensureSchema();
-
 app.listen(port, host, () => {
   console.log(`KDS API running on http://${host}:${port}`);
+  void ensureSchema().catch((error) => {
+    console.warn('Schema check skipped or failed:', error.message);
+  });
 });
