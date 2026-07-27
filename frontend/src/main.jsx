@@ -793,6 +793,7 @@ function App() {
 
   const selectedMenuItems = selectedRestaurant?.menu || [];
   const isAdmin = session?.user?.role === 'admin';
+  const cartCount = cart.items.reduce((total, entry) => total + entry.quantity, 0);
 
   function openAuth(mode = 'signin') {
     clearAuthErrors();
@@ -801,37 +802,93 @@ function App() {
     setAuthOpen(true);
   }
 
+  function openSection(section) {
+    if (section === 'home') {
+      setPanel('browse');
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      return;
+    }
+    if (section === 'restaurants') {
+      setPanel('browse');
+      window.scrollTo({ top: 680, behavior: 'smooth' });
+      return;
+    }
+    if (section === 'orders') {
+      setPanel('orders');
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      return;
+    }
+    if (section === 'cart') {
+      setPanel('cart');
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      return;
+    }
+    if (section === 'admin') {
+      setPanel('admin');
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  }
+
   return (
     <div className="shell">
-      <header className="topbar">
-        <div className="brand-lockup">
-          <img
-            alt="KD Easy Life logo"
-            className="brand-logo"
-            src="/kd-easy-life-logo.jpeg"
-          />
-          <div>
-            <div className="eyebrow">KD Easy Life</div>
-            <h1>Food Delivery</h1>
-          </div>
+      <header className="site-header">
+        <div className="site-header-strip">
+          <span className="header-strip-badge">Fast delivery</span>
+          <p>Order food, save favorites, and checkout from one clean storefront.</p>
+          <span className="header-strip-contact">Support: +8801762-849868</span>
         </div>
-        <div className="topbar-actions">
-          {session?.user ? (
-            <>
-              <div className="user-pill">
-                <strong>{session.user.name}</strong>
-                <span>{session.user.role}</span>
-              </div>
-              <button className="button button-ghost" onClick={openLogoutConfirm} type="button">
-                Logout
-              </button>
-            </>
-          ) : null}
-          {!session?.user ? (
-            <button className="button button-primary" type="button" onClick={() => openAuth('signin')}>
-              Login
+        <div className="site-header-main">
+          <button className="brand-lockup brand-button" type="button" onClick={() => openSection('home')}>
+            <img
+              alt="KD Easy Life logo"
+              className="brand-logo"
+              src="/kd-easy-life-logo.jpeg"
+            />
+            <div>
+              <div className="eyebrow">KD Easy Life</div>
+              <h1>Food Delivery</h1>
+            </div>
+          </button>
+
+          <nav className="header-nav" aria-label="Primary">
+            <button className={panel === 'browse' ? 'active' : ''} type="button" onClick={() => openSection('home')}>
+              Home
             </button>
-          ) : null}
+            <button className={panel === 'browse' ? 'active' : ''} type="button" onClick={() => openSection('restaurants')}>
+              Restaurants
+            </button>
+            <button className={panel === 'orders' ? 'active' : ''} type="button" onClick={() => openSection('orders')}>
+              Orders
+            </button>
+            <button className="header-nav-link" type="button" onClick={() => window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' })}>
+              Contact
+            </button>
+          </nav>
+
+          <div className="topbar-actions header-actions">
+            <button className="header-cart" type="button" onClick={() => openSection('cart')}>
+              <span className="header-cart-icon" aria-hidden="true">🛒</span>
+              <span className="header-cart-text">
+                <strong>Cart</strong>
+                <small>{cartCount} item{cartCount === 1 ? '' : 's'}</small>
+              </span>
+            </button>
+            {session?.user ? (
+              <>
+                <div className="user-pill">
+                  <strong>{session.user.name}</strong>
+                  <span>{session.user.role}</span>
+                </div>
+                <button className="button button-ghost" onClick={openLogoutConfirm} type="button">
+                  Logout
+                </button>
+              </>
+            ) : (
+              <button className="button button-primary" type="button" onClick={() => openAuth('signin')}>
+                Login
+              </button>
+            )}
+          </div>
         </div>
       </header>
 
@@ -960,14 +1017,16 @@ function App() {
                         <img alt={restaurant.name} src={restaurant.imageUrl} loading="lazy" />
                       </div>
                     ) : null}
-                    <div className="restaurant-card-top">
-                      <strong>{restaurant.name}</strong>
-                      <span>{restaurant.cuisine}</span>
-                    </div>
-                    <div className="restaurant-meta">
-                      <span>{restaurant.rating} rating</span>
-                      <span>{restaurant.minutes} min</span>
-                      <span>{formatMoney(restaurant.deliveryFee)} delivery</span>
+                    <div className="restaurant-card-body">
+                      <div className="restaurant-card-top">
+                        <strong>{restaurant.name}</strong>
+                        <span>{restaurant.cuisine}</span>
+                      </div>
+                      <div className="restaurant-meta">
+                        <span>{restaurant.rating} rating</span>
+                        <span>{restaurant.minutes} min</span>
+                        <span>{formatMoney(restaurant.deliveryFee)} delivery</span>
+                      </div>
                     </div>
                   </button>
                 ))}
@@ -984,33 +1043,35 @@ function App() {
               </div>
 
               {selectedRestaurant ? (
-                <div className="menu-list">
-                  {selectedMenuItems.map((item) => (
-                    <article className="menu-item" key={`${selectedRestaurant.id}-${item.name}`}>
-                      {item.imageUrl ? (
-                        <div className="menu-item-image">
-                          <img alt={item.name} src={item.imageUrl} loading="lazy" />
+                <div className="menu-panel">
+                  <div className="menu-list">
+                    {selectedMenuItems.map((item) => (
+                      <article className="menu-item" key={`${selectedRestaurant.id}-${item.name}`}>
+                        {item.imageUrl ? (
+                          <div className="menu-item-image">
+                            <img alt={item.name} src={item.imageUrl} loading="lazy" />
+                          </div>
+                        ) : null}
+                        <div className="menu-item-body">
+                          <div className="menu-item-head">
+                            <strong>{item.name}</strong>
+                            <span className="tag">{item.tag}</span>
+                          </div>
+                          <p>{item.description}</p>
                         </div>
-                      ) : null}
-                      <div>
-                        <div className="menu-item-head">
-                          <strong>{item.name}</strong>
-                          <span className="tag">{item.tag}</span>
+                        <div className="menu-item-actions">
+                          <strong>{formatMoney(item.price)}</strong>
+                          <button
+                            className="button button-primary"
+                            type="button"
+                            onClick={() => handleAddToCart(selectedRestaurant, item)}
+                          >
+                            Add
+                          </button>
                         </div>
-                        <p>{item.description}</p>
-                      </div>
-                      <div className="menu-item-actions">
-                        <strong>{formatMoney(item.price)}</strong>
-                        <button
-                          className="button button-primary"
-                          type="button"
-                          onClick={() => handleAddToCart(selectedRestaurant, item)}
-                        >
-                          Add
-                        </button>
-                      </div>
-                    </article>
-                  ))}
+                      </article>
+                    ))}
+                  </div>
                 </div>
               ) : (
                 <div className="empty-state">Pick a restaurant from the list.</div>
@@ -1706,8 +1767,8 @@ function App() {
           <div className="footer-grid">
             <div className="footer-column">
               <h4>Contact Us</h4>
-              <p>House 114/2, West Agargaon, Dhaka, Bangladesh</p>
-              <a href="tel:+8801824800800">01824-800800</a>
+              <p>House 114/2, Khilkhet, Dhaka, Bangladesh</p>
+              <a href="tel:+8801824800800">01762-849868</a>
               <a href="mailto:support@kdeasylife.com">support@kdeasylife.com</a>
               <span>Support hours: 24/7</span>
             </div>

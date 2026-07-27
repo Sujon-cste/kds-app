@@ -237,6 +237,28 @@ async function readRestaurants() {
   );
 }
 
+async function ensureColumn(tableName, columnName, definition, afterColumn) {
+  const [rows] = await pool.execute(
+    `SELECT COUNT(*) AS column_count
+     FROM INFORMATION_SCHEMA.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE()
+       AND TABLE_NAME = ?
+       AND COLUMN_NAME = ?`,
+    [tableName, columnName],
+  );
+  if (Number(rows[0]?.column_count || 0) > 0) {
+    return;
+  }
+
+  const afterClause = afterColumn ? ` AFTER ${afterColumn}` : '';
+  await pool.execute(`ALTER TABLE ${tableName} ADD COLUMN ${columnName} ${definition}${afterClause}`);
+}
+
+async function ensureSchema() {
+  await ensureColumn('restaurants', 'image_url', 'LONGTEXT NULL', 'color_hex');
+  await ensureColumn('restaurant_menu_items', 'image_url', 'LONGTEXT NULL', 'tag');
+}
+
 async function insertMenuItems(connection, restaurantId, menu) {
   for (const item of menu) {
     if (!item.name || !item.description || !item.price) {
@@ -556,6 +578,8 @@ app.use((error, request, response, next) => {
   }
   response.status(500).json({ message: error.message });
 });
+
+await ensureSchema();
 
 app.listen(port, host, () => {
   console.log(`KDS API running on http://${host}:${port}`);
