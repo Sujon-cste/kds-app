@@ -124,6 +124,8 @@ function App() {
   const [search, setSearch] = useState('');
   const [authMode, setAuthMode] = useState('signin');
   const [authOpen, setAuthOpen] = useState(false);
+  const [authError, setAuthError] = useState('');
+  const [authFieldErrors, setAuthFieldErrors] = useState({});
   const [logoutOpen, setLogoutOpen] = useState(false);
   const [logoutBusy, setLogoutBusy] = useState(false);
   const [signInForm, setSignInForm] = useState(blankSignIn);
@@ -268,6 +270,39 @@ function App() {
     setSuccess('');
   }
 
+  function clearAuthErrors() {
+    setAuthError('');
+    setAuthFieldErrors({});
+  }
+
+  function classifyAuthErrors(message, mode) {
+    const normalized = String(message || '').toLowerCase();
+    const nextErrors = {};
+
+    if (normalized.includes('phone') || normalized.includes('mobile') || normalized.includes('number')) {
+      nextErrors.phone = message;
+    }
+
+    if (normalized.includes('password') || normalized.includes('credential') || normalized.includes('invalid')) {
+      if (mode === 'signup' && normalized.includes('name')) {
+        nextErrors.name = message;
+      } else {
+        nextErrors.password = message;
+      }
+    }
+
+    if (mode === 'signup') {
+      if (normalized.includes('name')) {
+        nextErrors.name = message;
+      }
+      if (normalized.includes('password') && !nextErrors.password) {
+        nextErrors.password = message;
+      }
+    }
+
+    return nextErrors;
+  }
+
   function setCheckoutField(field, value) {
     if (field === 'name') {
       setCheckoutName(value);
@@ -318,6 +353,7 @@ function App() {
   async function handleSignIn(event) {
     event.preventDefault();
     clearNotifications();
+    clearAuthErrors();
     setBusy(true);
     try {
       const payload = await api.signIn(signInForm.phone, signInForm.password);
@@ -329,7 +365,8 @@ function App() {
       await reloadData(payload.token);
       notify('success', 'Signed in successfully.');
     } catch (err) {
-      notify('error', err.message);
+      setAuthError(err.message);
+      setAuthFieldErrors(classifyAuthErrors(err.message, 'signin'));
     } finally {
       setBusy(false);
     }
@@ -338,6 +375,7 @@ function App() {
   async function handleSignUp(event) {
     event.preventDefault();
     clearNotifications();
+    clearAuthErrors();
     setBusy(true);
     try {
       const payload = await api.signUp(signUpForm.name, signUpForm.phone, signUpForm.password);
@@ -349,7 +387,8 @@ function App() {
       await reloadData(payload.token);
       notify('success', 'Account created.');
     } catch (err) {
-      notify('error', err.message);
+      setAuthError(err.message);
+      setAuthFieldErrors(classifyAuthErrors(err.message, 'signup'));
     } finally {
       setBusy(false);
     }
@@ -713,6 +752,7 @@ function App() {
   const isAdmin = session?.user?.role === 'admin';
 
   function openAuth(mode = 'signin') {
+    clearAuthErrors();
     setAuthMode(mode);
     setAuthOpen(true);
   }
@@ -757,8 +797,8 @@ function App() {
             <p className="eyebrow">Browser frontend for the existing Node API</p>
             <h2>Hot meals, fast delivery, and checkout in just a few taps.</h2>
             <p>
-              This React app talks to your current backend without changing the API contract.
-              Run it locally for development or build it for cPanel deployment later.
+              Browse restaurants, add meals to your cart, and place orders from one clean food-delivery
+              dashboard.
             </p>
             <div className="hero-search">
               <label>
@@ -1370,30 +1410,49 @@ function App() {
 
         {authOpen && !session?.user ? (
           <div className="auth-modal" role="dialog" aria-modal="true" aria-label="Authentication dialog">
-            <div className="auth-modal-backdrop" onClick={() => setAuthOpen(false)} />
+            <div className="auth-modal-backdrop" />
             <div className="auth-modal-card panel">
               <div className="auth-modal-head">
                 <div>
                   <p className="eyebrow">Account access</p>
                   <h3>{authMode === 'signin' ? 'Sign in' : 'Create account'}</h3>
                 </div>
-                <button className="button button-ghost" type="button" onClick={() => setAuthOpen(false)}>
+                <button
+                  className="button button-ghost"
+                  type="button"
+                  onClick={() => {
+                    setAuthOpen(false);
+                    clearAuthErrors();
+                  }}
+                >
                   Close
                 </button>
               </div>
+
+              {authError ? (
+                <div className="alert alert-error" role="alert">
+                  {authError}
+                </div>
+              ) : null}
 
               <div className="segmented">
                 <button
                   className={authMode === 'signin' ? 'active' : ''}
                   type="button"
-                  onClick={() => setAuthMode('signin')}
+                  onClick={() => {
+                    setAuthMode('signin');
+                    clearAuthErrors();
+                  }}
                 >
                   Sign in
                 </button>
                 <button
                   className={authMode === 'signup' ? 'active' : ''}
                   type="button"
-                  onClick={() => setAuthMode('signup')}
+                  onClick={() => {
+                    setAuthMode('signup');
+                    clearAuthErrors();
+                  }}
                 >
                   Sign up
                 </button>
@@ -1405,22 +1464,32 @@ function App() {
                     Phone
                     <input
                       value={signInForm.phone}
-                      onChange={(event) =>
-                        setSignInForm((current) => ({ ...current, phone: event.target.value }))
-                      }
+                      aria-invalid={authFieldErrors.phone ? 'true' : 'false'}
+                      onChange={(event) => {
+                        setAuthError('');
+                        setAuthFieldErrors((current) => ({ ...current, phone: '' }));
+                        setSignInForm((current) => ({ ...current, phone: event.target.value }));
+                      }}
                       placeholder="017....."
                     />
+                    {authFieldErrors.phone ? <div className="field-error">{authFieldErrors.phone}</div> : null}
                   </label>
                   <label>
                     Password
                     <input
                       type="password"
                       value={signInForm.password}
-                      onChange={(event) =>
-                        setSignInForm((current) => ({ ...current, password: event.target.value }))
-                      }
+                      aria-invalid={authFieldErrors.password ? 'true' : 'false'}
+                      onChange={(event) => {
+                        setAuthError('');
+                        setAuthFieldErrors((current) => ({ ...current, password: '' }));
+                        setSignInForm((current) => ({ ...current, password: event.target.value }));
+                      }}
                       placeholder="Password"
                     />
+                    {authFieldErrors.password ? (
+                      <div className="field-error">{authFieldErrors.password}</div>
+                    ) : null}
                   </label>
                   <button className="button button-primary" disabled={busy} type="submit">
                     Sign in
@@ -1432,32 +1501,46 @@ function App() {
                     Name
                     <input
                       value={signUpForm.name}
-                      onChange={(event) =>
-                        setSignUpForm((current) => ({ ...current, name: event.target.value }))
-                      }
+                      aria-invalid={authFieldErrors.name ? 'true' : 'false'}
+                      onChange={(event) => {
+                        setAuthError('');
+                        setAuthFieldErrors((current) => ({ ...current, name: '' }));
+                        setSignUpForm((current) => ({ ...current, name: event.target.value }));
+                      }}
                       placeholder="Your name"
                     />
+                    {authFieldErrors.name ? <div className="field-error">{authFieldErrors.name}</div> : null}
                   </label>
                   <label>
                     Phone
                     <input
                       value={signUpForm.phone}
-                      onChange={(event) =>
-                        setSignUpForm((current) => ({ ...current, phone: event.target.value }))
-                      }
+                      aria-invalid={authFieldErrors.phone ? 'true' : 'false'}
+                      onChange={(event) => {
+                        setAuthError('');
+                        setAuthFieldErrors((current) => ({ ...current, phone: '' }));
+                        setSignUpForm((current) => ({ ...current, phone: event.target.value }));
+                      }}
                       placeholder="01xxxxxxxxx"
                     />
+                    {authFieldErrors.phone ? <div className="field-error">{authFieldErrors.phone}</div> : null}
                   </label>
                   <label>
                     Password
                     <input
                       type="password"
                       value={signUpForm.password}
-                      onChange={(event) =>
-                        setSignUpForm((current) => ({ ...current, password: event.target.value }))
-                      }
+                      aria-invalid={authFieldErrors.password ? 'true' : 'false'}
+                      onChange={(event) => {
+                        setAuthError('');
+                        setAuthFieldErrors((current) => ({ ...current, password: '' }));
+                        setSignUpForm((current) => ({ ...current, password: event.target.value }));
+                      }}
                       placeholder="6+ characters"
                     />
+                    {authFieldErrors.password ? (
+                      <div className="field-error">{authFieldErrors.password}</div>
+                    ) : null}
                   </label>
                   <button className="button button-primary" disabled={busy} type="submit">
                     Create account
