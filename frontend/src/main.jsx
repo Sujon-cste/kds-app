@@ -34,6 +34,7 @@ const blankMenuItem = () => ({
   price: '',
   tag: 'Item',
   category: 'food',
+  imageUrl: '',
 });
 
 const blankRestaurant = () => ({
@@ -43,6 +44,7 @@ const blankRestaurant = () => ({
   minutes: '25',
   deliveryFee: '40',
   colorHex: '#FFE7A3',
+  imageUrl: '',
   menu: [blankMenuItem()],
 });
 
@@ -68,6 +70,15 @@ function useLocalStorageState(key, initialValue) {
   }, [key, value]);
 
   return [value, setValue];
+}
+
+function readFileAsDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ''));
+    reader.onerror = () => reject(new Error('Unable to read the selected image.'));
+    reader.readAsDataURL(file);
+  });
 }
 
 function formatMoney(value) {
@@ -126,6 +137,7 @@ function App() {
   const [authOpen, setAuthOpen] = useState(false);
   const [authError, setAuthError] = useState('');
   const [authFieldErrors, setAuthFieldErrors] = useState({});
+  const [showSignInPassword, setShowSignInPassword] = useState(false);
   const [logoutOpen, setLogoutOpen] = useState(false);
   const [logoutBusy, setLogoutBusy] = useState(false);
   const [signInForm, setSignInForm] = useState(blankSignIn);
@@ -553,6 +565,33 @@ function App() {
     });
   }
 
+  async function setRestaurantImage(file) {
+    if (!file) {
+      return;
+    }
+    const imageUrl = await readFileAsDataUrl(file);
+    setRestaurantForm((current) => ({ ...current, imageUrl }));
+    setRestaurantErrors((current) => ({ ...current, imageUrl: '' }));
+  }
+
+  async function setMenuImage(index, file) {
+    if (!file) {
+      return;
+    }
+    const imageUrl = await readFileAsDataUrl(file);
+    setRestaurantForm((current) => {
+      const menu = current.menu.map((item, itemIndex) =>
+        itemIndex === index ? { ...item, imageUrl } : item,
+      );
+      return { ...current, menu };
+    });
+    setRestaurantErrors((current) => {
+      const menu = [...(current.menu || [])];
+      menu[index] = { ...(menu[index] || {}), imageUrl: '' };
+      return { ...current, menu };
+    });
+  }
+
   function addMenuRow() {
     setRestaurantForm((current) => ({ ...current, menu: [...current.menu, blankMenuItem()] }));
     setRestaurantErrors((current) => ({ ...current, menu: [...(current.menu || []), {}] }));
@@ -624,6 +663,7 @@ function App() {
       minutes: String(restaurant.minutes ?? 25),
       deliveryFee: String(restaurant.deliveryFee ?? 40),
       colorHex: colorToCss(restaurant.colorHex),
+      imageUrl: restaurant.imageUrl || '',
       menu: (restaurant.menu || []).length
         ? restaurant.menu.map((item) => ({
             name: item.name || '',
@@ -631,6 +671,7 @@ function App() {
             price: String(item.price ?? ''),
             tag: item.tag || 'Item',
             category: item.category || 'food',
+            imageUrl: item.imageUrl || '',
           }))
         : [blankMenuItem()],
     });
@@ -665,6 +706,7 @@ function App() {
         minutes: Number(restaurantForm.minutes || 25),
         deliveryFee: Number(restaurantForm.deliveryFee || 40),
         colorHex: restaurantForm.colorHex.trim() || '#FFE7A3',
+        imageUrl: restaurantForm.imageUrl.trim() || '',
         menu: restaurantForm.menu
           .filter((item) => item.name.trim())
           .map((item) => ({
@@ -673,6 +715,7 @@ function App() {
             price: Number(item.price || 0),
             tag: item.tag.trim() || 'Item',
             category: item.category,
+            imageUrl: item.imageUrl.trim() || '',
           })),
       };
 
@@ -753,6 +796,7 @@ function App() {
 
   function openAuth(mode = 'signin') {
     clearAuthErrors();
+    setShowSignInPassword(false);
     setAuthMode(mode);
     setAuthOpen(true);
   }
@@ -911,6 +955,11 @@ function App() {
                     onClick={() => setSelectedRestaurantId(restaurant.id)}
                     style={{ background: colorToCss(restaurant.colorHex) }}
                   >
+                    {restaurant.imageUrl ? (
+                      <div className="restaurant-card-image">
+                        <img alt={restaurant.name} src={restaurant.imageUrl} loading="lazy" />
+                      </div>
+                    ) : null}
                     <div className="restaurant-card-top">
                       <strong>{restaurant.name}</strong>
                       <span>{restaurant.cuisine}</span>
@@ -938,6 +987,11 @@ function App() {
                 <div className="menu-list">
                   {selectedMenuItems.map((item) => (
                     <article className="menu-item" key={`${selectedRestaurant.id}-${item.name}`}>
+                      {item.imageUrl ? (
+                        <div className="menu-item-image">
+                          <img alt={item.name} src={item.imageUrl} loading="lazy" />
+                        </div>
+                      ) : null}
                       <div>
                         <div className="menu-item-head">
                           <strong>{item.name}</strong>
@@ -1249,6 +1303,24 @@ function App() {
                   />
                   {restaurantErrors.colorHex ? <span className="field-error">{restaurantErrors.colorHex}</span> : null}
                 </label>
+                <label className="image-upload">
+                  Restaurant image
+                  <input
+                    accept="image/*"
+                    type="file"
+                    onChange={(event) => {
+                      const file = event.target.files?.[0];
+                      if (file) {
+                        void setRestaurantImage(file);
+                      }
+                    }}
+                  />
+                  {restaurantForm.imageUrl ? (
+                    <div className="image-preview">
+                      <img alt="Restaurant preview" src={restaurantForm.imageUrl} />
+                    </div>
+                  ) : null}
+                </label>
 
                 <div className="menu-editor">
                   <div className="menu-editor-head">
@@ -1290,6 +1362,24 @@ function App() {
                         />
                         {restaurantErrors.menu?.[index]?.description ? (
                           <span className="field-error">{restaurantErrors.menu[index].description}</span>
+                        ) : null}
+                      </label>
+                      <label className="image-upload">
+                        Item image
+                        <input
+                          accept="image/*"
+                          type="file"
+                          onChange={(event) => {
+                            const file = event.target.files?.[0];
+                            if (file) {
+                              void setMenuImage(index, file);
+                            }
+                          }}
+                        />
+                        {item.imageUrl ? (
+                          <div className="image-preview image-preview-small">
+                            <img alt={`${item.name || 'Menu item'} preview`} src={item.imageUrl} />
+                          </div>
                         ) : null}
                       </label>
                       <div className="menu-row-bottom">
@@ -1417,15 +1507,16 @@ function App() {
                   <p className="eyebrow">Account access</p>
                   <h3>{authMode === 'signin' ? 'Sign in' : 'Create account'}</h3>
                 </div>
-                <button
-                  className="button button-ghost"
-                  type="button"
-                  onClick={() => {
-                    setAuthOpen(false);
-                    clearAuthErrors();
-                  }}
-                >
-                  Close
+                  <button
+                    className="button button-ghost"
+                    type="button"
+                    onClick={() => {
+                      setAuthOpen(false);
+                      clearAuthErrors();
+                      setShowSignInPassword(false);
+                    }}
+                  >
+                    Close
                 </button>
               </div>
 
@@ -1476,17 +1567,36 @@ function App() {
                   </label>
                   <label>
                     Password
-                    <input
-                      type="password"
-                      value={signInForm.password}
-                      aria-invalid={authFieldErrors.password ? 'true' : 'false'}
-                      onChange={(event) => {
-                        setAuthError('');
-                        setAuthFieldErrors((current) => ({ ...current, password: '' }));
-                        setSignInForm((current) => ({ ...current, password: event.target.value }));
-                      }}
-                      placeholder="Password"
-                    />
+                    <div className="password-field">
+                      <input
+                        type={showSignInPassword ? 'text' : 'password'}
+                        value={signInForm.password}
+                        aria-invalid={authFieldErrors.password ? 'true' : 'false'}
+                        onChange={(event) => {
+                          setAuthError('');
+                          setAuthFieldErrors((current) => ({ ...current, password: '' }));
+                          setSignInForm((current) => ({ ...current, password: event.target.value }));
+                        }}
+                        placeholder="Password"
+                      />
+                      <button
+                        className="password-toggle"
+                        type="button"
+                        aria-label={showSignInPassword ? 'Hide password' : 'Show password'}
+                        aria-pressed={showSignInPassword}
+                        onClick={() => setShowSignInPassword((current) => !current)}
+                      >
+                        {showSignInPassword ? (
+                          <svg viewBox="0 0 24 24" aria-hidden="true">
+                            <path d="M3.5 12s3.1-6 8.5-6 8.5 6 8.5 6-3.1 6-8.5 6-8.5-6-8.5-6Zm8.5 3.5A3.5 3.5 0 1 0 12 8.5a3.5 3.5 0 0 0 0 7Zm0-1.8A1.7 1.7 0 1 1 12 9.9a1.7 1.7 0 0 1 0 3.4Z" />
+                          </svg>
+                        ) : (
+                          <svg viewBox="0 0 24 24" aria-hidden="true">
+                            <path d="M2.5 12s3.1-6 9.5-6c1.1 0 2.1.2 3 .4l1.5-1.5 1.4 1.4-14 14-1.4-1.4 2.1-2.1C3.7 15.5 2.5 12 2.5 12Zm7.1 0a2.4 2.4 0 0 0 3.9 1.9l-3.3-3.3A2.4 2.4 0 0 0 9.6 12Zm2.4-4.3c-3.9 0-6.2 2.7-7.1 4.3.4.7 1.1 1.8 2.1 2.7l1.2-1.2a4.1 4.1 0 0 1 5.4-5.4l1.2-1.2c-.9-.2-1.8-.2-2.8-.2Zm6.5 1.9-1.5 1.5c.5.7.8 1.3 1 1.9-.4.7-1.1 1.8-2.1 2.7a10 10 0 0 1-2.1 1.5l1.4 1.4c1.5-.8 3.1-2.1 4.8-4.5-.5-1-1.4-2.6-3.5-4.5Z" />
+                          </svg>
+                        )}
+                      </button>
+                    </div>
                     {authFieldErrors.password ? (
                       <div className="field-error">{authFieldErrors.password}</div>
                     ) : null}
@@ -1581,6 +1691,69 @@ function App() {
           </div>
         ) : null}
       </main>
+
+      <footer className="site-footer">
+        <div className="site-footer-inner">
+          <div className="footer-brand">
+            <p className="eyebrow">KD Easy Life</p>
+            <h3>Fresh food, faster checkout.</h3>
+            <p>
+              Browse restaurants, save your favorites, and complete orders from one simple delivery
+              dashboard.
+            </p>
+          </div>
+
+          <div className="footer-grid">
+            <div className="footer-column">
+              <h4>Contact Us</h4>
+              <p>House 114/2, West Agargaon, Dhaka, Bangladesh</p>
+              <a href="tel:+8801824800800">01824-800800</a>
+              <a href="mailto:support@kdeasylife.com">support@kdeasylife.com</a>
+              <span>Support hours: 24/7</span>
+            </div>
+
+            <div className="footer-column">
+              <h4>Help Center</h4>
+              <span>About this app</span>
+              <span>Delivery policy</span>
+              <span>Refund policy</span>
+              <span>Privacy policy</span>
+              <span>Terms and conditions</span>
+            </div>
+
+            <div className="footer-column">
+              <h4>Quick Links</h4>
+              <span>Browse restaurants</span>
+              <span>Track orders</span>
+              <span>My cart</span>
+              <span>Sign in</span>
+              <span>Checkout</span>
+            </div>
+
+            <div className="footer-column">
+              <h4>Follow Us</h4>
+              <div className="footer-socials" aria-label="Social links">
+                <span>FB</span>
+                <span>IG</span>
+                <span>YT</span>
+                <span>WA</span>
+              </div>
+              <h4 className="footer-payments-title">Payments</h4>
+              <div className="footer-payments" aria-label="Accepted payment methods">
+                <span>Visa</span>
+                <span>Mastercard</span>
+                <span>bKash</span>
+                <span>Nagad</span>
+              </div>
+            </div>
+          </div>
+
+          <div className="footer-bottom">
+            <p>Copyright 2026 KD Easy Life. All rights reserved.</p>
+            <p>Trade license: TRAD/DNCC/093574/2022</p>
+          </div>
+        </div>
+      </footer>
     </div>
   );
 }

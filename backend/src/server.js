@@ -194,6 +194,7 @@ function mapRestaurant(row, items) {
     minutes: row.minutes,
     deliveryFee: row.delivery_fee,
     colorHex: row.color_hex,
+    imageUrl: row.image_url || '',
     approved: Boolean(row.is_approved),
     menu: items.map((item) => ({
       name: item.name,
@@ -201,6 +202,7 @@ function mapRestaurant(row, items) {
       price: item.price,
       tag: item.tag,
       category: item.category,
+      imageUrl: item.image_url || '',
     })),
   };
 }
@@ -241,10 +243,11 @@ async function insertMenuItems(connection, restaurantId, menu) {
       throw new Error('Every menu item needs name, description, and price');
     }
     const category = normalizeMenuCategory(item.category || item.tag);
+    const imageUrl = String(item.imageUrl || '').trim() || null;
     await connection.execute(
       `INSERT INTO restaurant_menu_items
-       (restaurant_id, name, description, price, tag, category)
-       VALUES (?, ?, ?, ?, ?, ?)`,
+       (restaurant_id, name, description, price, tag, category, image_url)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
       [
         restaurantId,
         item.name,
@@ -252,6 +255,7 @@ async function insertMenuItems(connection, restaurantId, menu) {
         Number(item.price),
         item.tag || 'Item',
         category,
+        imageUrl,
       ],
     );
   }
@@ -326,6 +330,7 @@ app.post('/restaurants', auth('admin'), asyncRoute(async (request, response) => 
     minutes = 25,
     deliveryFee = 40,
     colorHex = '0xFFFFE7A3',
+    imageUrl = '',
     menu,
   } = request.body;
   if (!name || !cuisine || !Array.isArray(menu) || menu.length === 0) {
@@ -338,9 +343,9 @@ app.post('/restaurants', auth('admin'), asyncRoute(async (request, response) => 
     await connection.beginTransaction();
     const [restaurantResult] = await connection.execute(
       `INSERT INTO restaurants
-       (name, cuisine, rating, minutes, delivery_fee, color_hex)
-       VALUES (?, ?, ?, ?, ?, ?)`,
-      [name, cuisine, rating, minutes, deliveryFee, colorHex],
+       (name, cuisine, rating, minutes, delivery_fee, color_hex, image_url)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      [name, cuisine, rating, minutes, deliveryFee, colorHex, String(imageUrl || '').trim() || null],
     );
 
     await insertMenuItems(connection, restaurantResult.insertId, menu);
@@ -365,6 +370,7 @@ app.put('/restaurants/:id', auth('admin'), asyncRoute(async (request, response) 
     minutes = 25,
     deliveryFee = 40,
     colorHex = '0xFFFFE7A3',
+    imageUrl = '',
     menu,
   } = request.body;
   const restaurantId = Number(request.params.id);
@@ -378,9 +384,9 @@ app.put('/restaurants/:id', auth('admin'), asyncRoute(async (request, response) 
     await connection.beginTransaction();
     const [updateResult] = await connection.execute(
       `UPDATE restaurants
-       SET name = ?, cuisine = ?, rating = ?, minutes = ?, delivery_fee = ?, color_hex = ?
+       SET name = ?, cuisine = ?, rating = ?, minutes = ?, delivery_fee = ?, color_hex = ?, image_url = ?
        WHERE id = ?`,
-      [name, cuisine, rating, minutes, deliveryFee, colorHex, restaurantId],
+      [name, cuisine, rating, minutes, deliveryFee, colorHex, String(imageUrl || '').trim() || null, restaurantId],
     );
     if (updateResult.affectedRows === 0) {
       throw new Error('Restaurant not found');

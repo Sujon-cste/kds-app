@@ -83,9 +83,10 @@ p {
 }
 
 .shell {
-  width: min(1320px, calc(100vw - 24px));
-  margin: 0 auto;
-  padding: 24px 0 36px;
+  width: 100%;
+  margin: 0;
+  padding: 24px 24px 36px;
+  box-sizing: border-box;
 }
 
 .topbar,
@@ -648,6 +649,26 @@ select:disabled {
   box-shadow: 0 10px 24px rgba(68, 43, 11, 0.08);
 }
 
+.restaurant-card-image,
+.menu-item-image {
+  overflow: hidden;
+  border-radius: 16px;
+  border: 1px solid rgba(58, 37, 11, 0.1);
+  background: rgba(255, 255, 255, 0.86);
+}
+
+.restaurant-card-image img,
+.menu-item-image img {
+  display: block;
+  width: 100%;
+  height: 150px;
+  object-fit: cover;
+}
+
+.menu-item-image img {
+  height: 190px;
+}
+
 .restaurant-card.active {
   outline: 3px solid rgba(255, 122, 24, 0.28);
 }
@@ -752,6 +773,72 @@ select:disabled {
   color: #9d2c1b;
   font-size: 0.82rem;
   font-weight: 700;
+}
+
+.image-upload {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.image-upload input[type="file"] {
+  padding: 0.72rem 0.9rem;
+}
+
+.image-preview {
+  overflow: hidden;
+  border-radius: 18px;
+  border: 1px solid rgba(58, 37, 11, 0.1);
+  background: rgba(255, 255, 255, 0.9);
+}
+
+.image-preview img {
+  display: block;
+  width: 100%;
+  height: 180px;
+  object-fit: cover;
+}
+
+.image-preview-small img {
+  height: 140px;
+}
+
+.password-field {
+  position: relative;
+}
+
+.password-field input {
+  padding-right: 3rem;
+}
+
+.password-toggle {
+  position: absolute;
+  top: 50%;
+  right: 0.8rem;
+  transform: translateY(-50%);
+  border: 0;
+  padding: 0.3rem;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted);
+  display: inline-grid;
+  place-items: center;
+  cursor: pointer;
+}
+
+.password-toggle:hover {
+  color: var(--text);
+  background: rgba(58, 37, 11, 0.06);
+}
+
+.password-toggle:focus-visible {
+  outline: 2px solid rgba(255, 122, 24, 0.42);
+  outline-offset: 2px;
+}
+
+.password-toggle svg {
+  width: 1.05rem;
+  height: 1.05rem;
+  fill: currentColor;
 }
 
 input[aria-invalid="true"],
@@ -1007,6 +1094,103 @@ select[aria-invalid="true"] {
   flex-wrap: wrap;
 }
 
+.site-footer {
+  margin-top: 28px;
+  border-top: 1px solid rgba(58, 37, 11, 0.08);
+  background: linear-gradient(180deg, rgba(247, 244, 238, 0.72), rgba(255, 255, 255, 0.98));
+}
+
+.site-footer-inner {
+  width: 100%;
+  margin: 0;
+  padding: 36px 24px 22px;
+  box-sizing: border-box;
+}
+
+.footer-brand {
+  max-width: 760px;
+  display: grid;
+  gap: 10px;
+  margin-bottom: 26px;
+}
+
+.footer-brand h3 {
+  font-size: clamp(1.45rem, 2vw, 2rem);
+}
+
+.footer-brand p {
+  color: var(--muted);
+  line-height: 1.7;
+  max-width: 58ch;
+}
+
+.footer-grid {
+  display: grid;
+  grid-template-columns: 1.2fr 1fr 1fr 1fr;
+  gap: 24px;
+  padding: 24px 0 28px;
+  border-top: 1px solid rgba(58, 37, 11, 0.08);
+  border-bottom: 1px solid rgba(58, 37, 11, 0.08);
+}
+
+.footer-column {
+  display: grid;
+  gap: 10px;
+  align-content: start;
+}
+
+.footer-column h4,
+.footer-payments-title {
+  font-size: 0.98rem;
+  color: var(--text);
+}
+
+.footer-column p,
+.footer-column span,
+.footer-column a {
+  color: var(--muted);
+  font-size: 0.92rem;
+  line-height: 1.55;
+}
+
+.footer-column a {
+  width: fit-content;
+  text-decoration: none;
+}
+
+.footer-column a:hover {
+  color: var(--green);
+}
+
+.footer-socials,
+.footer-payments {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.footer-socials span,
+.footer-payments span {
+  border-radius: 999px;
+  border: 1px solid rgba(58, 37, 11, 0.12);
+  background: rgba(255, 255, 255, 0.86);
+  padding: 0.44rem 0.7rem;
+  font-size: 0.76rem;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.footer-bottom {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: center;
+  flex-wrap: wrap;
+  padding-top: 18px;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
 @keyframes hero-rise {
   from {
     opacity: 0;
@@ -1079,12 +1263,15 @@ select[aria-invalid="true"] {
   .topbar-actions {
     justify-content: flex-start;
   }
+
+  .footer-grid {
+    grid-template-columns: 1fr 1fr;
+  }
 }
 
 @media (max-width: 720px) {
   .shell {
-    width: min(100vw - 16px, 1320px);
-    padding-top: 14px;
+    padding: 14px 16px 30px;
   }
 
   .panel,
@@ -1118,6 +1305,14 @@ select[aria-invalid="true"] {
     max-width: none;
   }
 
+  .site-footer-inner {
+    padding: 28px 16px 20px;
+  }
+
+  .footer-grid {
+    grid-template-columns: 1fr;
+  }
+
   .row-actions {
     justify-content: flex-start;
   }
@@ -1144,5 +1339,9 @@ select[aria-invalid="true"] {
   .auth-modal-head {
     align-items: flex-start;
     flex-direction: column;
+  }
+
+  .footer-bottom {
+    align-items: flex-start;
   }
 }
