@@ -28,6 +28,105 @@ const terminalStatuses = new Set(['delivered', 'rejected']);
 const categories = ['food', 'medicine', 'others'];
 const restaurantsPerPage = 7;
 
+function createBlankCart() {
+  return {
+    merchantId: null,
+    merchantType: 'restaurant',
+    merchantName: '',
+    deliveryFee: 0,
+    items: [],
+  };
+}
+
+function normalizeCartState(value) {
+  if (!value || typeof value !== 'object') {
+    return createBlankCart();
+  }
+
+  if ('merchantId' in value || 'merchantType' in value) {
+    return {
+      ...createBlankCart(),
+      ...value,
+      items: Array.isArray(value.items) ? value.items : [],
+    };
+  }
+
+  return {
+    merchantId: value.restaurantId ?? null,
+    merchantType: 'restaurant',
+    merchantName: value.restaurantName || '',
+    deliveryFee: Number(value.deliveryFee || 0),
+    items: Array.isArray(value.items) ? value.items : [],
+  };
+}
+
+function createInitialShops() {
+  return [
+    {
+      id: 'shop-tech-hub',
+      type: 'shop',
+      name: 'Tech Hub',
+      active: true,
+      deliveryFee: 60,
+      colorHex: '#DFF4FF',
+      imageUrl: '',
+      products: [
+        {
+          id: 'product-headphones',
+          name: 'Wireless Headphones',
+          description: 'Comfort fit, noise isolation, and long battery life.',
+          price: 2490,
+          stockQty: 18,
+          trackStock: true,
+          category: 'electronics',
+          imageUrl: '',
+        },
+        {
+          id: 'product-watch',
+          name: 'Smart Watch',
+          description: 'Track health, messages, and daily activity.',
+          price: 3990,
+          stockQty: 9,
+          trackStock: true,
+          category: 'electronics',
+          imageUrl: '',
+        },
+      ],
+    },
+    {
+      id: 'shop-home-bazaar',
+      type: 'shop',
+      name: 'Home Bazaar',
+      active: true,
+      deliveryFee: 45,
+      colorHex: '#FFF1D6',
+      imageUrl: '',
+      products: [
+        {
+          id: 'product-detergent',
+          name: 'Laundry Detergent',
+          description: 'Family-size detergent for everyday use.',
+          price: 320,
+          stockQty: 25,
+          trackStock: true,
+          category: 'home',
+          imageUrl: '',
+        },
+        {
+          id: 'product-kettle',
+          name: 'Electric Kettle',
+          description: 'Compact kettle for quick tea and coffee.',
+          price: 1590,
+          stockQty: 6,
+          trackStock: true,
+          category: 'home',
+          imageUrl: '',
+        },
+      ],
+    },
+  ];
+}
+
 const blankMenuItem = () => ({
   name: '',
   description: '',
@@ -48,14 +147,79 @@ const blankRestaurant = () => ({
   menu: [blankMenuItem()],
 });
 
+const blankShopProduct = () => ({
+  name: '',
+  description: '',
+  price: '',
+  stockQty: '1',
+  trackStock: true,
+  category: 'general',
+  imageUrl: '',
+});
+
+const blankShop = () => ({
+  name: '',
+  deliveryFee: '50',
+  colorHex: '#DFF4FF',
+  imageUrl: '',
+  active: true,
+  description: '',
+  products: [blankShopProduct()],
+});
+
 const blankSignIn = { phone: '', password: '' };
 const blankSignUp = { name: '', phone: '', password: '' };
+
+const heroSlides = [
+  {
+    src: '/hero-biryani.png',
+    alt: 'A warm bowl of biryani with garnish',
+    kicker: 'Biryani',
+    title: 'Hot biryani, ready to deliver',
+    text: 'Rich, aromatic, and built for the first hero slide.',
+  },
+  {
+    src: '/hero-burger.png',
+    alt: 'A stacked burger with fries',
+    kicker: 'Burger',
+    title: 'Burger combos with a fast finish',
+    text: 'Juicy, crisp, and ideal for a bold second slide.',
+  },
+  {
+    src: '/hero-pasta.png',
+    alt: 'Creamy pasta served in a bowl',
+    kicker: 'Pasta',
+    title: 'Creamy pasta for quick comfort',
+    text: 'Smooth, warm, and easy to order in just a few taps.',
+  },
+  {
+    src: '/hero-dessert.png',
+    alt: 'A dessert plate with rich toppings',
+    kicker: 'Dessert',
+    title: 'Dessert that finishes the meal well',
+    text: 'Sweet, polished, and made to keep the hero lively.',
+  },
+  {
+    src: '/hero-thali.png',
+    alt: 'A colorful thali with multiple dishes',
+    kicker: 'Thali',
+    title: 'A full thali for everyday delivery',
+    text: 'Balanced, colorful, and perfect for the final slide.',
+  },
+];
 
 function useLocalStorageState(key, initialValue) {
   const [value, setValue] = useState(() => {
     try {
       const raw = localStorage.getItem(key);
-      return raw ? JSON.parse(raw) : initialValue;
+      if (!raw) {
+        return initialValue;
+      }
+      const parsed = JSON.parse(raw);
+      if (key === 'kds-react-cart') {
+        return normalizeCartState(parsed);
+      }
+      return parsed;
     } catch {
       return initialValue;
     }
@@ -120,12 +284,8 @@ function normalizeOrders(value) {
 
 function App() {
   const [session, setSession] = useLocalStorageState('kds-react-session', null);
-  const [cart, setCart] = useLocalStorageState('kds-react-cart', {
-    restaurantId: null,
-    restaurantName: '',
-    deliveryFee: 0,
-    items: [],
-  });
+  const [cart, setCart] = useLocalStorageState('kds-react-cart', createBlankCart());
+  const [shops, setShops] = useLocalStorageState('kds-react-shops', createInitialShops());
   const [restaurants, setRestaurants] = useState([]);
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -154,24 +314,112 @@ function App() {
   const [orderDrafts, setOrderDrafts] = useState({});
   const [orderView, setOrderView] = useState('all');
   const [panel, setPanel] = useState('browse');
+  const [browseView, setBrowseView] = useState('all');
+  const [selectedMerchantId, setSelectedMerchantId] = useState(null);
+  const [adminSection, setAdminSection] = useState('restaurants');
+  const [shopForm, setShopForm] = useState(blankShop);
+  const [shopErrors, setShopErrors] = useState({ products: [] });
+  const [editingShopId, setEditingShopId] = useState(null);
+  const [heroSlide, setHeroSlide] = useState(0);
 
-  const selectedRestaurant = useMemo(
-    () => restaurants.find((restaurant) => restaurant.id === selectedRestaurantId) || null,
-    [restaurants, selectedRestaurantId],
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      setHeroSlide((current) => (current + 1) % heroSlides.length);
+    }, 4500);
+
+    return () => window.clearInterval(timer);
+  }, []);
+
+  const restaurantMerchants = useMemo(
+    () =>
+      restaurants.map((restaurant) => ({
+        id: restaurant.id,
+        type: 'restaurant',
+        name: restaurant.name,
+        cuisine: restaurant.cuisine,
+        active: restaurant.active !== false,
+        rating: restaurant.rating,
+        minutes: restaurant.minutes,
+        deliveryFee: restaurant.deliveryFee,
+        colorHex: restaurant.colorHex,
+        imageUrl: restaurant.imageUrl,
+        description: `${restaurant.cuisine} restaurant`,
+        items: (restaurant.menu || []).map((item) => ({
+          ...item,
+          id: item.id || `${restaurant.id}-${item.name}`,
+          type: 'food',
+          trackStock: false,
+          stockQty: null,
+        })),
+      })),
+    [restaurants],
   );
 
-  const filteredRestaurants = useMemo(() => {
+  const shopMerchants = useMemo(
+    () =>
+      shops.map((shop) => ({
+        id: shop.id,
+        type: 'shop',
+        name: shop.name,
+        active: shop.active !== false,
+        deliveryFee: shop.deliveryFee,
+        colorHex: shop.colorHex,
+        imageUrl: shop.imageUrl,
+        description: shop.description || 'Shop',
+        items: (shop.products || []).map((product) => ({
+          ...product,
+          id: product.id || `${shop.id}-${product.name}`,
+          type: 'product',
+          trackStock: product.trackStock !== false,
+          stockQty: Number(product.stockQty || 0),
+        })),
+      })),
+    [shops],
+  );
+
+  const merchants = useMemo(
+    () => [...restaurantMerchants, ...shopMerchants],
+    [restaurantMerchants, shopMerchants],
+  );
+
+  const filteredMerchants = useMemo(() => {
     const query = search.trim().toLowerCase();
-    if (!query) {
-      return restaurants;
-    }
-    return restaurants.filter((restaurant) => {
-      const haystack = [restaurant.name, restaurant.cuisine, ...(restaurant.menu || []).map((item) => item.name)]
+    return merchants.filter((merchant) => {
+      if (browseView === 'food' && merchant.type !== 'restaurant') {
+        return false;
+      }
+      if (browseView === 'shops' && merchant.type !== 'shop') {
+        return false;
+      }
+      if (!query) {
+        return true;
+      }
+      const haystack = [
+        merchant.name,
+        merchant.cuisine,
+        merchant.description,
+        ...(merchant.items || []).map((item) => `${item.name} ${item.description || ''}`),
+      ]
         .join(' ')
         .toLowerCase();
       return haystack.includes(query);
     });
-  }, [restaurants, search]);
+  }, [browseView, merchants, search]);
+
+  const selectedMerchant = useMemo(
+    () => merchants.find((merchant) => merchant.id === selectedMerchantId) || filteredMerchants[0] || merchants[0] || null,
+    [filteredMerchants, merchants, selectedMerchantId],
+  );
+
+  useEffect(() => {
+    if (!filteredMerchants.length) {
+      return;
+    }
+    const stillVisible = filteredMerchants.some((merchant) => merchant.id === selectedMerchantId);
+    if (!stillVisible) {
+      setSelectedMerchantId(filteredMerchants[0].id);
+    }
+  }, [filteredMerchants, selectedMerchantId]);
 
   const restaurantPageCount = Math.max(1, Math.ceil(restaurants.length / restaurantsPerPage));
   const pagedRestaurants = restaurants.slice(
@@ -190,8 +438,9 @@ function App() {
   });
   const visibleOrders = orderView === 'today' ? todayOrders : normalizedOrders;
 
-  const cartSubtotal = cart.items.reduce((sum, entry) => sum + Number(entry.item.price) * entry.quantity, 0);
-  const cartDeliveryFee = Number(cart.deliveryFee || 0);
+  const normalizedCart = normalizeCartState(cart);
+  const cartSubtotal = normalizedCart.items.reduce((sum, entry) => sum + Number(entry.item.price) * entry.quantity, 0);
+  const cartDeliveryFee = Number(normalizedCart.deliveryFee || 0);
   const cartTotal = cartSubtotal + cartDeliveryFee;
 
   useEffect(() => {
@@ -244,7 +493,8 @@ function App() {
 
   useEffect(() => {
     if (session?.user?.role === 'admin' && panel === 'browse') {
-      setPanel('orders');
+      setPanel('admin');
+      setAdminSection('dashboard');
     }
     if (session?.user?.role === 'customer' && panel === 'admin') {
       setPanel('browse');
@@ -252,14 +502,14 @@ function App() {
   }, [panel, session?.user?.role]);
 
   useEffect(() => {
-    if (!restaurants.length) {
+    if (!merchants.length) {
       return;
     }
-    const stillExists = restaurants.some((restaurant) => restaurant.id === selectedRestaurantId);
+    const stillExists = merchants.some((merchant) => merchant.id === selectedMerchantId);
     if (!stillExists) {
-      setSelectedRestaurantId(restaurants[0].id);
+      setSelectedMerchantId(merchants[0].id);
     }
-  }, [restaurants, selectedRestaurantId]);
+  }, [merchants, selectedMerchantId]);
 
   useEffect(() => {
     if (restaurantPage > restaurantPageCount) {
@@ -373,7 +623,12 @@ function App() {
       setSignInForm(blankSignIn);
       setAuthMode('signin');
       setAuthOpen(false);
-      setPanel(payload.user.role === 'admin' ? 'orders' : 'browse');
+      if (payload.user.role === 'admin') {
+        setPanel('admin');
+        setAdminSection('dashboard');
+      } else {
+        setPanel('browse');
+      }
       await reloadData(payload.token);
       notify('success', 'Signed in successfully.');
     } catch (err) {
@@ -409,12 +664,7 @@ function App() {
   function clearSessionState() {
     setSession(null);
     setOrders([]);
-    setCart({
-      restaurantId: null,
-      restaurantName: '',
-      deliveryFee: 0,
-      items: [],
-    });
+    setCart(createBlankCart());
     setPanel('browse');
     setSuccess('');
     setError('');
@@ -444,19 +694,26 @@ function App() {
     }, 450);
   }
 
-  function handleAddToCart(restaurant, item) {
+  function handleAddToCart(merchant, item) {
     clearNotifications();
-    const isDifferentRestaurant = cart.restaurantId && cart.restaurantId !== restaurant.id;
-    if (isDifferentRestaurant) {
-      const confirmed = window.confirm('Replace the current cart with this restaurant?');
+    const currentCart = normalizeCartState(cart);
+    const isDifferentMerchant = currentCart.merchantId && currentCart.merchantId !== merchant.id;
+    if (isDifferentMerchant) {
+      const confirmed = window.confirm(`Replace the current cart with ${merchant.name}?`);
       if (!confirmed) {
         return;
       }
     }
 
     setCart((current) => {
-      const existingItems = isDifferentRestaurant ? [] : current.items;
-      const existingIndex = existingItems.findIndex((entry) => entry.item.name === item.name);
+      const normalizedCurrent = normalizeCartState(current);
+      const existingItems = isDifferentMerchant ? [] : normalizedCurrent.items;
+      const currentQuantity = existingItems.find((entry) => entry.item.id === item.id)?.quantity || 0;
+      if (merchant.type === 'shop' && item.trackStock !== false && Number(item.stockQty || 0) <= currentQuantity) {
+        window.alert('This item is out of stock.');
+        return normalizedCurrent;
+      }
+      const existingIndex = existingItems.findIndex((entry) => entry.item.id === item.id);
       const nextItems = existingIndex >= 0
         ? existingItems.map((entry, index) =>
             index === existingIndex ? { ...entry, quantity: entry.quantity + 1 } : entry,
@@ -464,31 +721,38 @@ function App() {
         : [...existingItems, { item, quantity: 1 }];
 
       return {
-        restaurantId: restaurant.id,
-        restaurantName: restaurant.name,
-        deliveryFee: restaurant.deliveryFee,
+        merchantId: merchant.id,
+        merchantType: merchant.type,
+        merchantName: merchant.name,
+        deliveryFee: merchant.deliveryFee,
         items: nextItems,
       };
     });
-    setSelectedRestaurantId(restaurant.id);
+    setSelectedMerchantId(merchant.id);
   }
 
-  function updateCartQuantity(itemName, delta) {
+  function updateCartQuantity(itemId, delta) {
     setCart((current) => {
-      const items = current.items
+      const normalizedCurrent = normalizeCartState(current);
+      const lineItem = normalizedCurrent.items.find((entry) => entry.item.id === itemId) || null;
+      if (
+        delta > 0 &&
+        normalizedCurrent.merchantType === 'shop' &&
+        lineItem &&
+        lineItem.item.trackStock !== false &&
+        Number(lineItem.item.stockQty || 0) <= lineItem.quantity
+      ) {
+        return normalizedCurrent;
+      }
+      const items = normalizedCurrent.items
         .map((entry) =>
-          entry.item.name === itemName ? { ...entry, quantity: entry.quantity + delta } : entry,
+          entry.item.id === itemId ? { ...entry, quantity: entry.quantity + delta } : entry,
         )
         .filter((entry) => entry.quantity > 0);
       if (items.length === 0) {
-        return {
-          restaurantId: null,
-          restaurantName: '',
-          deliveryFee: 0,
-          items: [],
-        };
+        return createBlankCart();
       }
-      return { ...current, items };
+      return { ...normalizedCurrent, items };
     });
   }
 
@@ -499,7 +763,8 @@ function App() {
       notify('error', 'Sign in before placing an order.');
       return;
     }
-    if (!cart.items.length) {
+    const currentCart = normalizeCartState(cart);
+    if (!currentCart.items.length) {
       notify('error', 'Your cart is empty.');
       return;
     }
@@ -510,13 +775,13 @@ function App() {
     setBusy(true);
     try {
       const payload = await api.createOrder(session.token, {
-        restaurantName: cart.restaurantName,
+        restaurantName: currentCart.merchantName,
         customerName: checkoutName.trim(),
         phone: checkoutPhone.trim(),
         address: checkoutAddress.trim(),
         subtotal: cartSubtotal,
         deliveryFee: cartDeliveryFee,
-        lines: cart.items.map((entry) => ({
+        lines: currentCart.items.map((entry) => ({
           quantity: entry.quantity,
           item: entry.item,
         })),
@@ -528,12 +793,7 @@ function App() {
       }
 
       setOrders((current) => [createdOrder, ...normalizeOrders(current)]);
-      setCart({
-        restaurantId: null,
-        restaurantName: '',
-        deliveryFee: 0,
-        items: [],
-      });
+      setCart(createBlankCart());
       setCheckoutAddress('');
       setCheckoutErrors({});
       setPanel('orders');
@@ -791,9 +1051,214 @@ function App() {
     }
   }
 
-  const selectedMenuItems = selectedRestaurant?.menu || [];
+  function setShopField(field, value) {
+    setShopForm((current) => ({ ...current, [field]: value }));
+    setShopErrors((current) => ({ ...current, [field]: '' }));
+  }
+
+  function setShopProductField(index, field, value) {
+    setShopForm((current) => {
+      const products = current.products.map((product, productIndex) =>
+        productIndex === index ? { ...product, [field]: value } : product,
+      );
+      return { ...current, products };
+    });
+    setShopErrors((current) => {
+      const products = [...(current.products || [])];
+      products[index] = { ...(products[index] || {}), [field]: '' };
+      return { ...current, products };
+    });
+  }
+
+  function addShopProductRow() {
+    setShopForm((current) => ({ ...current, products: [...current.products, blankShopProduct()] }));
+    setShopErrors((current) => ({ ...current, products: [...(current.products || []), {}] }));
+  }
+
+  function removeShopProductRow(index) {
+    setShopForm((current) => {
+      const products = current.products.filter((_, productIndex) => productIndex !== index);
+      return { ...current, products: products.length ? products : [blankShopProduct()] };
+    });
+    setShopErrors((current) => {
+      const products = (current.products || []).filter((_, productIndex) => productIndex !== index);
+      return { ...current, products: products.length ? products : [{}] };
+    });
+  }
+
+  function validateShopForm() {
+    const nextErrors = { products: shopForm.products.map(() => ({})) };
+
+    if (!shopForm.name.trim()) {
+      nextErrors.name = 'Enter shop name.';
+    }
+    if (!shopForm.deliveryFee || Number(shopForm.deliveryFee) < 0) {
+      nextErrors.deliveryFee = 'Enter a valid fee.';
+    }
+    if (shopForm.colorHex.trim() && !/^(#|0x)[0-9a-fA-F]{6,8}$/.test(shopForm.colorHex.trim())) {
+      nextErrors.colorHex = 'Use a valid color like #DFF4FF.';
+    }
+
+    shopForm.products.forEach((product, index) => {
+      if (!product.name.trim()) {
+        nextErrors.products[index].name = 'Enter product name.';
+      }
+      if (!product.description.trim()) {
+        nextErrors.products[index].description = 'Enter product description.';
+      }
+      if (!product.price || Number(product.price) <= 0) {
+        nextErrors.products[index].price = 'Enter product price.';
+      }
+      if (product.trackStock !== false && (product.stockQty === '' || Number(product.stockQty) < 0)) {
+        nextErrors.products[index].stockQty = 'Enter stock quantity.';
+      }
+    });
+
+    const hasProductErrors = nextErrors.products.some((product) => Object.values(product).some(Boolean));
+    const hasFormErrors = Object.entries(nextErrors).some(
+      ([field, value]) => field !== 'products' && Boolean(value),
+    );
+
+    setShopErrors(nextErrors);
+    return !hasProductErrors && !hasFormErrors;
+  }
+
+  function openShopEditor(shop) {
+    setEditingShopId(shop.id);
+    setShopForm({
+      name: shop.name || '',
+      deliveryFee: String(shop.deliveryFee ?? 50),
+      colorHex: colorToCss(shop.colorHex || '#DFF4FF'),
+      imageUrl: shop.imageUrl || '',
+      active: shop.active !== false,
+      description: shop.description || '',
+      products: (shop.products || []).length
+        ? shop.products.map((product) => ({
+            name: product.name || '',
+            description: product.description || '',
+            price: String(product.price ?? ''),
+            stockQty: String(product.stockQty ?? 1),
+            trackStock: product.trackStock !== false,
+            category: product.category || 'general',
+            imageUrl: product.imageUrl || '',
+          }))
+        : [blankShopProduct()],
+    });
+    setAdminSection('shops');
+    setShopErrors({
+      products: (shop.products || []).length ? shop.products.map(() => ({})) : [{}],
+    });
+  }
+
+  function resetShopForm() {
+    setEditingShopId(null);
+    setShopForm(blankShop());
+    setShopErrors({ products: [{}] });
+  }
+
+  async function setShopImage(file) {
+    if (!file) {
+      return;
+    }
+    const imageUrl = await readFileAsDataUrl(file);
+    setShopForm((current) => ({ ...current, imageUrl }));
+    setShopErrors((current) => ({ ...current, imageUrl: '' }));
+  }
+
+  async function setShopProductImage(index, file) {
+    if (!file) {
+      return;
+    }
+    const imageUrl = await readFileAsDataUrl(file);
+    setShopForm((current) => {
+      const products = current.products.map((product, productIndex) =>
+        productIndex === index ? { ...product, imageUrl } : product,
+      );
+      return { ...current, products };
+    });
+    setShopErrors((current) => {
+      const products = [...(current.products || [])];
+      products[index] = { ...(products[index] || {}), imageUrl: '' };
+      return { ...current, products };
+    });
+  }
+
+  async function handleShopSubmit(event) {
+    event.preventDefault();
+    if (!session?.token) {
+      notify('error', 'Sign in as admin first.');
+      return;
+    }
+    clearNotifications();
+    if (!validateShopForm()) {
+      return;
+    }
+    setBusy(true);
+    try {
+      const payload = {
+        id: editingShopId || `shop-${Date.now()}`,
+        type: 'shop',
+        name: shopForm.name.trim(),
+        deliveryFee: Number(shopForm.deliveryFee || 0),
+        colorHex: shopForm.colorHex.trim() || '#DFF4FF',
+        imageUrl: shopForm.imageUrl.trim() || '',
+        active: shopForm.active !== false,
+        description: shopForm.description.trim() || '',
+        products: shopForm.products
+          .filter((product) => product.name.trim())
+          .map((product) => ({
+            id: product.id || `${editingShopId || 'shop'}-${product.name.trim().toLowerCase().replace(/\s+/g, '-')}`,
+            name: product.name.trim(),
+            description: product.description.trim(),
+            price: Number(product.price || 0),
+            stockQty: Number(product.stockQty || 0),
+            trackStock: product.trackStock !== false,
+            category: product.category || 'general',
+            imageUrl: product.imageUrl.trim() || '',
+          })),
+      };
+
+      if (payload.products.length === 0) {
+        throw new Error('Add at least one product.');
+      }
+
+      setShops((current) => {
+        const next = current.filter((shop) => shop.id !== payload.id);
+        return [payload, ...next];
+      });
+      resetShopForm();
+      notify('success', editingShopId ? 'Shop updated.' : 'Shop created.');
+    } catch (err) {
+      notify('error', err.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function handleDeleteShop(shop) {
+    if (!session?.token) {
+      notify('error', 'Sign in as admin first.');
+      return;
+    }
+    const confirmed = window.confirm(`Delete ${shop.name}?`);
+    if (!confirmed) {
+      return;
+    }
+    setShops((current) => current.filter((entry) => entry.id !== shop.id));
+    if (editingShopId === shop.id) {
+      resetShopForm();
+    }
+    notify('success', 'Shop deleted.');
+  }
+
+  const selectedMenuItems = selectedMerchant?.items || [];
   const isAdmin = session?.user?.role === 'admin';
-  const cartCount = cart.items.reduce((total, entry) => total + entry.quantity, 0);
+  const totalCatalogItems = merchants.reduce((total, merchant) => total + (merchant.items || []).length, 0);
+  const activeOrdersCount = normalizedOrders.filter((order) => !terminalStatuses.has(order.status)).length;
+  const shopCount = shopMerchants.length;
+  const restaurantCount = restaurantMerchants.length;
+  const pendingOrdersCount = normalizedOrders.filter((order) => order.status === 'pending').length;
+  const cartCount = normalizedCart.items.reduce((total, entry) => total + entry.quantity, 0);
 
   function openAuth(mode = 'signin') {
     clearAuthErrors();
@@ -804,16 +1269,35 @@ function App() {
 
   function openSection(section) {
     if (section === 'home') {
+      if (isAdmin) {
+        setPanel('admin');
+        setAdminSection('dashboard');
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+        return;
+      }
+      setBrowseView('all');
       setPanel('browse');
       window.scrollTo({ top: 0, behavior: 'smooth' });
       return;
     }
     if (section === 'restaurants') {
+      if (isAdmin) {
+        setPanel('admin');
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+        return;
+      }
+      setBrowseView('food');
       setPanel('browse');
       window.scrollTo({ top: 680, behavior: 'smooth' });
       return;
     }
     if (section === 'orders') {
+      if (isAdmin) {
+        setPanel('admin');
+        setAdminSection('orders');
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+        return;
+      }
       setPanel('orders');
       window.scrollTo({ top: 0, behavior: 'smooth' });
       return;
@@ -825,12 +1309,15 @@ function App() {
     }
     if (section === 'admin') {
       setPanel('admin');
+      if (!adminSection || adminSection === 'dashboard') {
+        setAdminSection('dashboard');
+      }
       window.scrollTo({ top: 0, behavior: 'smooth' });
     }
   }
 
   return (
-    <div className="shell">
+    <div className={`shell ${isAdmin ? 'shell-admin' : ''}`}>
       <header className="site-header">
         <div className="site-header-strip">
           <span className="header-strip-badge">Fast delivery</span>
@@ -851,28 +1338,53 @@ function App() {
           </button>
 
           <nav className="header-nav" aria-label="Primary">
-            <button className={panel === 'browse' ? 'active' : ''} type="button" onClick={() => openSection('home')}>
-              Home
-            </button>
-            <button className={panel === 'browse' ? 'active' : ''} type="button" onClick={() => openSection('restaurants')}>
-              Restaurants
-            </button>
-            <button className={panel === 'orders' ? 'active' : ''} type="button" onClick={() => openSection('orders')}>
-              Orders
-            </button>
-            <button className="header-nav-link" type="button" onClick={() => window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' })}>
-              Contact
-            </button>
+            {isAdmin ? (
+              <>
+                <button className={panel === 'admin' ? 'active' : ''} type="button" onClick={() => openSection('home')}>
+                  Dashboard
+                </button>
+                <button className={panel === 'orders' ? 'active' : ''} type="button" onClick={() => openSection('orders')}>
+                  Orders
+                </button>
+                <button
+                  className={panel === 'admin' ? 'active' : ''}
+                  type="button"
+                  onClick={() => {
+                    setPanel('admin');
+                    setAdminSection('restaurants');
+                  }}
+                >
+                  Catalog
+                </button>
+              </>
+            ) : (
+              <>
+                <button className={panel === 'browse' ? 'active' : ''} type="button" onClick={() => openSection('home')}>
+                  Home
+                </button>
+                <button className={panel === 'browse' ? 'active' : ''} type="button" onClick={() => openSection('restaurants')}>
+                  Marketplace
+                </button>
+                <button className={panel === 'orders' ? 'active' : ''} type="button" onClick={() => openSection('orders')}>
+                  Orders
+                </button>
+                <button className="header-nav-link" type="button" onClick={() => window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' })}>
+                  Contact
+                </button>
+              </>
+            )}
           </nav>
 
           <div className="topbar-actions header-actions">
-            <button className="header-cart" type="button" onClick={() => openSection('cart')}>
-              <span className="header-cart-icon" aria-hidden="true">🛒</span>
-              <span className="header-cart-text">
-                <strong>Cart</strong>
-                <small>{cartCount} item{cartCount === 1 ? '' : 's'}</small>
-              </span>
-            </button>
+            {!isAdmin ? (
+              <button className="header-cart" type="button" onClick={() => openSection('cart')}>
+                <span className="header-cart-icon" aria-hidden="true">🛒</span>
+                <span className="header-cart-text">
+                  <strong>Cart</strong>
+                  <small>{cartCount} item{cartCount === 1 ? '' : 's'}</small>
+                </span>
+              </button>
+            ) : null}
             {session?.user ? (
               <>
                 <div className="user-pill">
@@ -893,57 +1405,134 @@ function App() {
       </header>
 
       <main className="layout">
-        <section className="hero panel">
-          <div className="hero-copy">
-            <p className="eyebrow">Browser frontend for the existing Node API</p>
-            <h2>Hot meals, fast delivery, and checkout in just a few taps.</h2>
-            <p>
-              Browse restaurants, add meals to your cart, and place orders from one clean food-delivery
-              dashboard.
-            </p>
-            <div className="hero-search">
-              <label>
-                Search restaurants or menu items
-                <input
-                  value={search}
-                  onChange={(event) => setSearch(event.target.value)}
-                  placeholder="Biryani, burger, soup..."
-                />
-              </label>
-            </div>
-            <div className="hero-stats">
-              <div>
-                <strong>{restaurants.length}</strong>
-                <span>restaurants</span>
-              </div>
-              <div>
-                <strong>{normalizeOrders(orders).length}</strong>
-                <span>orders</span>
-              </div>
-              <div>
-                <strong>{cart.items.length}</strong>
-                <span>cart items</span>
+        {isAdmin ? (
+          <section className="hero panel admin-hero">
+            <div className="admin-hero-copy">
+              <p className="eyebrow">Admin dashboard</p>
+              <h2>Control orders, catalog data, and merchant setup from one place.</h2>
+              <p>
+                This view is for operations only. Manage restaurants, shops, stock-tracked products, and active
+                orders without storefront imagery.
+              </p>
+              <div className="admin-hero-actions">
+                <button className="button button-primary" type="button" onClick={() => setPanel('orders')}>
+                  View orders
+                </button>
+                <button className="button button-ghost" type="button" onClick={() => setPanel('admin')}>
+                  Manage products
+                </button>
               </div>
             </div>
-          </div>
-          <div className="hero-scene" aria-hidden="true">
-            <div className="scene-card scene-banner">
-              <span>Fresh table</span>
-              <strong>Warm food, quick service</strong>
+            <div className="admin-hero-grid">
+              <div className="admin-stat-card">
+                <span>Active orders</span>
+                <strong>{activeOrdersCount}</strong>
+                <small>Orders currently in motion</small>
+              </div>
+              <div className="admin-stat-card">
+                <span>Catalog items</span>
+                <strong>{totalCatalogItems}</strong>
+                <small>Restaurants and shop products</small>
+              </div>
+              <div className="admin-stat-card">
+                <span>Restaurants</span>
+                <strong>{restaurantCount}</strong>
+                <small>Menu-based merchants</small>
+              </div>
+              <div className="admin-stat-card">
+                <span>Shops</span>
+                <strong>{shopCount}</strong>
+                <small>Stock-managed merchants</small>
+              </div>
             </div>
-            <div className="scene-plate scene-plate-large">
-              <div className="scene-bowl"></div>
-              <div className="scene-garnish scene-garnish-one"></div>
-              <div className="scene-garnish scene-garnish-two"></div>
+          </section>
+        ) : (
+          <section className="hero panel">
+            <div className="hero-copy">
+              <p className="eyebrow">Browser frontend for the existing Node API</p>
+              <h2>Hot meals, fast delivery, and checkout in just a few taps.</h2>
+              <p>
+                Browse restaurants, add meals to your cart, and place orders from one clean food-delivery
+                dashboard.
+              </p>
+              <div className="hero-search">
+                <label>
+                  Search restaurants or menu items
+                  <input
+                    value={search}
+                    onChange={(event) => setSearch(event.target.value)}
+                    placeholder="Biryani, burger, soup..."
+                  />
+                </label>
+              </div>
+              <div className="hero-stats">
+                <div>
+                  <strong>{restaurants.length}</strong>
+                  <span>restaurants</span>
+                </div>
+                <div>
+                  <strong>{normalizeOrders(orders).length}</strong>
+                  <span>orders</span>
+                </div>
+                <div>
+                  <strong>{normalizedCart.items.length}</strong>
+                  <span>cart items</span>
+                </div>
+              </div>
             </div>
-            <div className="scene-plate scene-plate-small"></div>
-            <div className="scene-cutlery scene-cutlery-left"></div>
-            <div className="scene-cutlery scene-cutlery-right"></div>
-            <div className="scene-steam scene-steam-one"></div>
-            <div className="scene-steam scene-steam-two"></div>
-            <div className="scene-mat"></div>
-          </div>
-        </section>
+            <div className="hero-scene hero-slider" aria-label="Featured food slideshow">
+              <div className="hero-slider-stage">
+                {heroSlides.map((slide, index) => (
+                  <div
+                    key={slide.src}
+                    className={`hero-slide ${index === heroSlide ? 'is-active' : ''}`}
+                    aria-hidden={index === heroSlide ? 'false' : 'true'}
+                  >
+                    <img alt={slide.alt} className="hero-slide-image" src={slide.src} />
+                    <div className="hero-slide-scrim"></div>
+                    <div className="hero-slide-content">
+                      <span>{slide.kicker}</span>
+                      <strong>{slide.title}</strong>
+                      <p>{slide.text}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <div className="hero-slider-controls">
+                <button
+                  aria-label="Previous hero image"
+                  className="hero-slider-button"
+                  type="button"
+                  onClick={() => setHeroSlide((current) => (current - 1 + heroSlides.length) % heroSlides.length)}
+                >
+                  ‹
+                </button>
+                <button
+                  aria-label="Next hero image"
+                  className="hero-slider-button"
+                  type="button"
+                  onClick={() => setHeroSlide((current) => (current + 1) % heroSlides.length)}
+                >
+                  ›
+                </button>
+              </div>
+
+              <div className="hero-slider-dots" aria-label="Select hero image">
+                {heroSlides.map((slide, index) => (
+                  <button
+                    key={slide.src}
+                    aria-pressed={index === heroSlide}
+                    aria-label={`Show hero image ${index + 1}`}
+                    className={index === heroSlide ? 'is-active' : ''}
+                    type="button"
+                    onClick={() => setHeroSlide(index)}
+                  />
+                ))}
+              </div>
+            </div>
+          </section>
+        )}
 
         <section className="nav-panel panel">
           <div className="toolbar-actions">
@@ -952,9 +1541,12 @@ function App() {
                 <button
                   className={panel === 'browse' ? 'button button-primary' : 'button button-ghost'}
                   type="button"
-                  onClick={() => setPanel('browse')}
+                  onClick={() => {
+                    setBrowseView('food');
+                    setPanel('browse');
+                  }}
                 >
-                  Restaurants
+                  Marketplace
                 </button>
                
                   <button
@@ -966,23 +1558,31 @@ function App() {
                   </button>
                
               </>
-            ) : null}
-            {session?.user ? (
+            ) : (
+              <>
+                <button
+                  className={panel === 'admin' ? 'button button-primary' : 'button button-ghost'}
+                  type="button"
+                  onClick={() => setPanel('admin')}
+                >
+                  Catalog
+                </button>
+                <button
+                  className={panel === 'orders' ? 'button button-primary' : 'button button-ghost'}
+                  type="button"
+                  onClick={() => setPanel('orders')}
+                >
+                  Orders
+                </button>
+              </>
+            )}
+            {!isAdmin && session?.user ? (
               <button
                 className={panel === 'orders' ? 'button button-primary' : 'button button-ghost'}
                 type="button"
                 onClick={() => setPanel('orders')}
               >
                 Orders
-              </button>
-            ) : null}
-            {isAdmin ? (
-              <button
-                className={panel === 'admin' ? 'button button-primary' : 'button button-ghost'}
-                type="button"
-                onClick={() => setPanel('admin')}
-              >
-                Restaurant
               </button>
             ) : null}
           </div>
@@ -997,35 +1597,57 @@ function App() {
             <div className="panel">
               <div className="section-head">
                 <div>
-                  <p className="eyebrow">Restaurants</p>
-                  <h3>Choose a place and build your cart</h3>
+                  <p className="eyebrow">Marketplace</p>
+                  <h3>Browse food and shop merchants in one place</h3>
                 </div>
-                <span className="muted">Click a card to inspect the menu</span>
+                <span className="muted">Food uses availability. Shops use stock.</span>
+              </div>
+
+              <div className="order-tabs">
+                <button className={browseView === 'all' ? 'active' : ''} type="button" onClick={() => setBrowseView('all')}>
+                  All
+                </button>
+                <button className={browseView === 'food' ? 'active' : ''} type="button" onClick={() => setBrowseView('food')}>
+                  Food
+                </button>
+                <button className={browseView === 'shops' ? 'active' : ''} type="button" onClick={() => setBrowseView('shops')}>
+                  Shops
+                </button>
               </div>
 
               <div className="cards-grid">
-                {filteredRestaurants.map((restaurant) => (
+                {filteredMerchants.map((merchant) => (
                   <button
-                    className={`restaurant-card ${selectedRestaurantId === restaurant.id ? 'active' : ''}`}
-                    key={restaurant.id}
+                    className={`restaurant-card ${selectedMerchant?.id === merchant.id ? 'active' : ''}`}
+                    key={merchant.id}
                     type="button"
-                    onClick={() => setSelectedRestaurantId(restaurant.id)}
-                    style={{ background: colorToCss(restaurant.colorHex) }}
+                    onClick={() => setSelectedMerchantId(merchant.id)}
+                    style={{ background: colorToCss(merchant.colorHex) }}
                   >
-                    {restaurant.imageUrl ? (
+                    {merchant.imageUrl ? (
                       <div className="restaurant-card-image">
-                        <img alt={restaurant.name} src={restaurant.imageUrl} loading="lazy" />
+                        <img alt={merchant.name} src={merchant.imageUrl} loading="lazy" />
                       </div>
                     ) : null}
                     <div className="restaurant-card-body">
                       <div className="restaurant-card-top">
-                        <strong>{restaurant.name}</strong>
-                        <span>{restaurant.cuisine}</span>
+                        <strong>{merchant.name}</strong>
+                        <span>{merchant.type === 'shop' ? 'Shop' : merchant.cuisine}</span>
                       </div>
                       <div className="restaurant-meta">
-                        <span>{restaurant.rating} rating</span>
-                        <span>{restaurant.minutes} min</span>
-                        <span>{formatMoney(restaurant.deliveryFee)} delivery</span>
+                        {merchant.type === 'restaurant' ? (
+                          <>
+                            <span>{merchant.rating} rating</span>
+                            <span>{merchant.minutes} min</span>
+                            <span>{formatMoney(merchant.deliveryFee)} delivery</span>
+                          </>
+                        ) : (
+                          <>
+                            <span>{merchant.items.length} products</span>
+                            <span>{merchant.active ? 'Open' : 'Closed'}</span>
+                            <span>{formatMoney(merchant.deliveryFee)} shipping</span>
+                          </>
+                        )}
                       </div>
                     </div>
                   </button>
@@ -1036,45 +1658,57 @@ function App() {
             <div className="panel">
               <div className="section-head">
                 <div>
-                  <p className="eyebrow">Menu</p>
-                  <h3>{selectedRestaurant ? selectedRestaurant.name : 'Select a restaurant'}</h3>
+                  <p className="eyebrow">{selectedMerchant?.type === 'shop' ? 'Shop' : 'Restaurant'} items</p>
+                  <h3>{selectedMerchant ? selectedMerchant.name : 'Select a merchant'}</h3>
                 </div>
                 <span className="muted">{selectedMenuItems.length} items</span>
               </div>
 
-              {selectedRestaurant ? (
+              {selectedMerchant ? (
                 <div className="menu-panel">
                   <div className="menu-list">
-                    {selectedMenuItems.map((item) => (
-                      <article className="menu-item" key={`${selectedRestaurant.id}-${item.name}`}>
-                        {item.imageUrl ? (
-                          <div className="menu-item-image">
-                            <img alt={item.name} src={item.imageUrl} loading="lazy" />
+                    {selectedMenuItems.map((item) => {
+                      const isShopItem = selectedMerchant.type === 'shop';
+                      const stockQty = Number(item.stockQty || 0);
+                      const canAdd = !isShopItem || item.trackStock === false || stockQty > 0;
+                      return (
+                        <article className="menu-item" key={`${selectedMerchant.id}-${item.id}`}>
+                          {item.imageUrl ? (
+                            <div className="menu-item-image">
+                              <img alt={item.name} src={item.imageUrl} loading="lazy" />
+                            </div>
+                          ) : null}
+                          <div className="menu-item-body">
+                            <div className="menu-item-head">
+                              <strong>{item.name}</strong>
+                              <span className="tag">{isShopItem ? 'Product' : item.tag}</span>
+                            </div>
+                            <p>{item.description}</p>
+                            {isShopItem ? (
+                              <div className="restaurant-meta">
+                                <span>{item.trackStock === false ? 'Unlimited' : `${stockQty} in stock`}</span>
+                                <span>{item.category || 'general'}</span>
+                              </div>
+                            ) : null}
                           </div>
-                        ) : null}
-                        <div className="menu-item-body">
-                          <div className="menu-item-head">
-                            <strong>{item.name}</strong>
-                            <span className="tag">{item.tag}</span>
+                          <div className="menu-item-actions">
+                            <strong>{formatMoney(item.price)}</strong>
+                            <button
+                              className="button button-primary"
+                              disabled={!canAdd}
+                              type="button"
+                              onClick={() => handleAddToCart(selectedMerchant, item)}
+                            >
+                              {isShopItem && !canAdd ? 'Out of stock' : 'Add'}
+                            </button>
                           </div>
-                          <p>{item.description}</p>
-                        </div>
-                        <div className="menu-item-actions">
-                          <strong>{formatMoney(item.price)}</strong>
-                          <button
-                            className="button button-primary"
-                            type="button"
-                            onClick={() => handleAddToCart(selectedRestaurant, item)}
-                          >
-                            Add
-                          </button>
-                        </div>
-                      </article>
-                    ))}
+                        </article>
+                      );
+                    })}
                   </div>
                 </div>
               ) : (
-                <div className="empty-state">Pick a restaurant from the list.</div>
+                <div className="empty-state">Pick a restaurant or shop from the list.</div>
               )}
             </div>
           </section>
@@ -1089,31 +1723,41 @@ function App() {
                   <h3>Review and place your order</h3>
                 </div>
                 <span className="muted">
-                  {cart.items.length ? `${cart.items.length} items` : 'Cart empty'}
+                  {normalizedCart.items.length ? `${normalizedCart.items.length} items` : 'Cart empty'}
                 </span>
               </div>
 
               <div className="cart-box">
-                {cart.items.map((entry) => (
-                  <div className="cart-line" key={entry.item.name}>
+                {normalizedCart.items.map((entry) => (
+                  <div className="cart-line" key={entry.item.id}>
                     <div>
                       <strong>{entry.item.name}</strong>
-                      <p>{formatMoney(entry.item.price)}</p>
+                      <p>
+                        {formatMoney(entry.item.price)} {normalizedCart.merchantType === 'shop' ? 'item' : 'meal'}
+                      </p>
                     </div>
                     <div className="quantity-controls">
-                      <button type="button" onClick={() => updateCartQuantity(entry.item.name, -1)}>
+                      <button type="button" onClick={() => updateCartQuantity(entry.item.id, -1)}>
                         -
                       </button>
                       <span>{entry.quantity}</span>
-                      <button type="button" onClick={() => updateCartQuantity(entry.item.name, 1)}>
+                      <button
+                        type="button"
+                        disabled={
+                          normalizedCart.merchantType === 'shop' &&
+                          entry.item.trackStock !== false &&
+                          entry.quantity >= Number(entry.item.stockQty || 0)
+                        }
+                        onClick={() => updateCartQuantity(entry.item.id, 1)}
+                      >
                         +
                       </button>
                     </div>
                   </div>
                 ))}
 
-                {cart.items.length === 0 ? (
-                  <div className="empty-state">Add menu items from Restaurants before placing an order.</div>
+                {normalizedCart.items.length === 0 ? (
+                  <div className="empty-state">Add items from Marketplace before placing an order.</div>
                 ) : null}
 
                 <form className="stack" onSubmit={handleCheckout}>
@@ -1162,7 +1806,7 @@ function App() {
                     </div>
                   </div>
 
-                  <button className="button button-primary" disabled={busy || !cart.items.length} type="submit">
+                  <button className="button button-primary" disabled={busy || !normalizedCart.items.length} type="submit">
                     Place order
                   </button>
                 </form>
@@ -1286,275 +1930,743 @@ function App() {
         ) : null}
 
         {panel === 'admin' && isAdmin ? (
-          <section className="content-grid admin-grid">
-            <div className="panel">
-              <div className="section-head">
-                <div>
-                  <p className="eyebrow">Restaurant editor</p>
-                  <h3>{editingRestaurantId ? 'Edit restaurant' : 'Create restaurant'}</h3>
-                </div>
-                <button className="button button-ghost" type="button" onClick={resetRestaurantForm}>
-                  New
+          <section className="admin-console">
+            <aside className="panel admin-sidebar">
+              <div className="admin-sidebar-head">
+                <p className="eyebrow">Control room</p>
+                <h3>Admin console</h3>
+                <p className="muted">Manage orders, restaurants, and shops from one workspace.</p>
+              </div>
+
+              <div className="admin-sidebar-nav">
+                <button
+                  className={adminSection === 'dashboard' ? 'active' : ''}
+                  type="button"
+                  onClick={() => setAdminSection('dashboard')}
+                >
+                  Dashboard
+                </button>
+                <button
+                  className={adminSection === 'orders' ? 'active' : ''}
+                  type="button"
+                  onClick={() => setAdminSection('orders')}
+                >
+                  Orders
+                </button>
+                <button
+                  className={adminSection === 'restaurants' ? 'active' : ''}
+                  type="button"
+                  onClick={() => setAdminSection('restaurants')}
+                >
+                  Restaurants
+                </button>
+                <button
+                  className={adminSection === 'shops' ? 'active' : ''}
+                  type="button"
+                  onClick={() => setAdminSection('shops')}
+                >
+                  Shops
                 </button>
               </div>
 
-              <form className="stack" onSubmit={handleRestaurantSubmit}>
-                <div className="two-col">
-                  <label>
-                    Name
-                    <input
-                      aria-invalid={restaurantErrors.name ? 'true' : 'false'}
-                      value={restaurantForm.name}
-                      onChange={(event) => setRestaurantField('name', event.target.value)}
-                    />
-                    {restaurantErrors.name ? <span className="field-error">{restaurantErrors.name}</span> : null}
-                  </label>
-                  <label>
-                    Cuisine
-                    <input
-                      aria-invalid={restaurantErrors.cuisine ? 'true' : 'false'}
-                      value={restaurantForm.cuisine}
-                      onChange={(event) => setRestaurantField('cuisine', event.target.value)}
-                    />
-                    {restaurantErrors.cuisine ? <span className="field-error">{restaurantErrors.cuisine}</span> : null}
-                  </label>
+              <div className="admin-sidebar-foot">
+                <div>
+                  <strong>{activeOrdersCount}</strong>
+                  <span>active orders</span>
                 </div>
-                <div className="three-col">
-                  <label>
-                    Rating
-                    <input
-                      aria-invalid={restaurantErrors.rating ? 'true' : 'false'}
-                      type="number"
-                      step="0.1"
-                      value={restaurantForm.rating}
-                      onChange={(event) => setRestaurantField('rating', event.target.value)}
-                    />
-                    {restaurantErrors.rating ? <span className="field-error">{restaurantErrors.rating}</span> : null}
-                  </label>
-                  <label>
-                    Minutes
-                    <input
-                      aria-invalid={restaurantErrors.minutes ? 'true' : 'false'}
-                      type="number"
-                      value={restaurantForm.minutes}
-                      onChange={(event) => setRestaurantField('minutes', event.target.value)}
-                    />
-                    {restaurantErrors.minutes ? <span className="field-error">{restaurantErrors.minutes}</span> : null}
-                  </label>
-                  <label>
-                    Delivery fee
-                    <input
-                      aria-invalid={restaurantErrors.deliveryFee ? 'true' : 'false'}
-                      type="number"
-                      value={restaurantForm.deliveryFee}
-                      onChange={(event) => setRestaurantField('deliveryFee', event.target.value)}
-                    />
-                    {restaurantErrors.deliveryFee ? (
-                      <span className="field-error">{restaurantErrors.deliveryFee}</span>
-                    ) : null}
-                  </label>
+                <div>
+                  <strong>{totalCatalogItems}</strong>
+                  <span>catalog items</span>
                 </div>
-                <label>
-                  Color
-                  <input
-                    aria-invalid={restaurantErrors.colorHex ? 'true' : 'false'}
-                    value={restaurantForm.colorHex}
-                    onChange={(event) => setRestaurantField('colorHex', event.target.value)}
-                    placeholder="#FFE7A3"
-                  />
-                  {restaurantErrors.colorHex ? <span className="field-error">{restaurantErrors.colorHex}</span> : null}
-                </label>
-                <label className="image-upload">
-                  Restaurant image
-                  <input
-                    accept="image/*"
-                    type="file"
-                    onChange={(event) => {
-                      const file = event.target.files?.[0];
-                      if (file) {
-                        void setRestaurantImage(file);
-                      }
-                    }}
-                  />
-                  {restaurantForm.imageUrl ? (
-                    <div className="image-preview">
-                      <img alt="Restaurant preview" src={restaurantForm.imageUrl} />
-                    </div>
-                  ) : null}
-                </label>
+              </div>
+            </aside>
 
-                <div className="menu-editor">
-                  <div className="menu-editor-head">
-                    <strong>Menu items</strong>
+            <div className="admin-main">
+              <div className="admin-kpis">
+                <div className="admin-kpi-card">
+                  <span>Pending</span>
+                  <strong>{pendingOrdersCount}</strong>
+                </div>
+                <div className="admin-kpi-card">
+                  <span>Active</span>
+                  <strong>{activeOrdersCount}</strong>
+                </div>
+                <div className="admin-kpi-card">
+                  <span>Restaurants</span>
+                  <strong>{restaurantCount}</strong>
+                </div>
+                <div className="admin-kpi-card">
+                  <span>Shops</span>
+                  <strong>{shopCount}</strong>
+                </div>
+                <div className="admin-kpi-card">
+                  <span>Items</span>
+                  <strong>{totalCatalogItems}</strong>
+                </div>
+              </div>
+
+              {adminSection === 'dashboard' ? (
+                <div className="admin-dashboard-grid">
+                  <div className="panel">
+                    <div className="section-head">
+                      <div>
+                        <p className="eyebrow">Recent orders</p>
+                        <h3>Compact order feed</h3>
+                      </div>
+                      <button className="button button-ghost" type="button" onClick={() => setAdminSection('orders')}>
+                        Open orders
+                      </button>
+                    </div>
+                    <div className="admin-table-wrap">
+                      <table className="admin-table">
+                        <thead>
+                          <tr>
+                            <th>Order</th>
+                            <th>Merchant</th>
+                            <th>Customer</th>
+                            <th>Status</th>
+                            <th>Total</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {normalizedOrders.slice(0, 6).map((order) => (
+                            <tr key={order.id}>
+                              <td>
+                                <strong>{order.id}</strong>
+                              </td>
+                              <td>{order.restaurantName}</td>
+                              <td>{order.customerName}</td>
+                              <td>
+                                <span className={statusClass(order.status)}>{statusLabels[order.status]}</span>
+                              </td>
+                              <td>{formatMoney(order.total)}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
                   </div>
 
-                  {restaurantForm.menu.map((item, index) => (
-                    <div className="menu-row" key={index}>
+                  <div className="panel">
+                    <div className="section-head">
+                      <div>
+                        <p className="eyebrow">Overview</p>
+                        <h3>Merchant snapshot</h3>
+                      </div>
+                    </div>
+                    <div className="admin-overview-list">
+                      <div>
+                        <span>Pending orders</span>
+                        <strong>{pendingOrdersCount}</strong>
+                      </div>
+                      <div>
+                        <span>Restaurants</span>
+                        <strong>{restaurantCount}</strong>
+                      </div>
+                      <div>
+                        <span>Shops</span>
+                        <strong>{shopCount}</strong>
+                      </div>
+                      <div>
+                        <span>Catalog items</span>
+                        <strong>{totalCatalogItems}</strong>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ) : null}
+
+              {adminSection === 'orders' ? (
+                <div className="panel">
+                  <div className="section-head">
+                    <div>
+                      <p className="eyebrow">Orders</p>
+                      <h3>Compact order table</h3>
+                    </div>
+                    <div className="order-tabs order-tabs-inline">
+                      <button className={orderView === 'all' ? 'active' : ''} type="button" onClick={() => setOrderView('all')}>
+                        All
+                      </button>
+                      <button className={orderView === 'today' ? 'active' : ''} type="button" onClick={() => setOrderView('today')}>
+                        Today
+                      </button>
+                    </div>
+                  </div>
+                  <div className="admin-table-wrap">
+                    <table className="admin-table admin-table-orders">
+                      <thead>
+                        <tr>
+                          <th>Order</th>
+                          <th>Merchant</th>
+                          <th>Customer</th>
+                          <th>Phone</th>
+                          <th>Items</th>
+                          <th>Status</th>
+                          <th>Total</th>
+                          <th>Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {visibleOrders.map((order) => (
+                          <tr key={order.id}>
+                            <td>{order.id}</td>
+                            <td>{order.restaurantName}</td>
+                            <td>{order.customerName}</td>
+                            <td>{order.phone}</td>
+                            <td>{normalizeOrders(order.lines).reduce((sum, line) => sum + Number(line.quantity || 0), 0)}</td>
+                            <td>
+                              {isAdmin ? (
+                                <select
+                                  disabled={terminalStatuses.has(order.status)}
+                                  value={orderDrafts[order.id]?.status || order.status}
+                                  onChange={(event) =>
+                                    setOrderDrafts((current) => ({
+                                      ...current,
+                                      [order.id]: {
+                                        ...(current[order.id] || {}),
+                                        status: event.target.value,
+                                      },
+                                    }))
+                                  }
+                                >
+                                  {Object.keys(statusLabels).map((status) => (
+                                    <option key={status} value={status}>
+                                      {statusLabels[status]}
+                                    </option>
+                                  ))}
+                                </select>
+                              ) : (
+                                <span className={statusClass(order.status)}>{statusLabels[order.status]}</span>
+                              )}
+                            </td>
+                            <td>{formatMoney(order.total)}</td>
+                            <td>
+                              <div className="admin-table-actions">
+                                <input
+                                  placeholder="Rider"
+                                  disabled={terminalStatuses.has(order.status)}
+                                  value={orderDrafts[order.id]?.riderName ?? order.riderName ?? ''}
+                                  onChange={(event) =>
+                                    setOrderDrafts((current) => ({
+                                      ...current,
+                                      [order.id]: {
+                                        ...(current[order.id] || {}),
+                                        riderName: event.target.value,
+                                      },
+                                    }))
+                                  }
+                                />
+                                <button
+                                  className="button button-primary"
+                                  disabled={busy || terminalStatuses.has(order.status)}
+                                  type="button"
+                                  onClick={() => handleStatusSave(order.id)}
+                                >
+                                  Save
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              ) : null}
+
+              {adminSection === 'restaurants' ? (
+                <div className="admin-split">
+                  <div className="panel">
+                    <div className="section-head">
+                      <div>
+                        <p className="eyebrow">Restaurant editor</p>
+                        <h3>{editingRestaurantId ? 'Edit restaurant' : 'Create restaurant'}</h3>
+                      </div>
+                      <button className="button button-ghost" type="button" onClick={resetRestaurantForm}>
+                        New
+                      </button>
+                    </div>
+
+                    <form className="stack" onSubmit={handleRestaurantSubmit}>
                       <div className="two-col">
                         <label>
-                          Item name
+                          Name
                           <input
-                            aria-invalid={restaurantErrors.menu?.[index]?.name ? 'true' : 'false'}
-                            value={item.name}
-                            onChange={(event) => setMenuField(index, 'name', event.target.value)}
+                            aria-invalid={restaurantErrors.name ? 'true' : 'false'}
+                            value={restaurantForm.name}
+                            onChange={(event) => setRestaurantField('name', event.target.value)}
                           />
-                          {restaurantErrors.menu?.[index]?.name ? (
-                            <span className="field-error">{restaurantErrors.menu[index].name}</span>
-                          ) : null}
+                          {restaurantErrors.name ? <span className="field-error">{restaurantErrors.name}</span> : null}
                         </label>
                         <label>
-                          Tag
+                          Cuisine
                           <input
-                            aria-invalid={restaurantErrors.menu?.[index]?.tag ? 'true' : 'false'}
-                            value={item.tag}
-                            onChange={(event) => setMenuField(index, 'tag', event.target.value)}
+                            aria-invalid={restaurantErrors.cuisine ? 'true' : 'false'}
+                            value={restaurantForm.cuisine}
+                            onChange={(event) => setRestaurantField('cuisine', event.target.value)}
                           />
-                          {restaurantErrors.menu?.[index]?.tag ? (
-                            <span className="field-error">{restaurantErrors.menu[index].tag}</span>
+                          {restaurantErrors.cuisine ? <span className="field-error">{restaurantErrors.cuisine}</span> : null}
+                        </label>
+                      </div>
+                      <div className="three-col">
+                        <label>
+                          Rating
+                          <input
+                            aria-invalid={restaurantErrors.rating ? 'true' : 'false'}
+                            type="number"
+                            step="0.1"
+                            value={restaurantForm.rating}
+                            onChange={(event) => setRestaurantField('rating', event.target.value)}
+                          />
+                          {restaurantErrors.rating ? <span className="field-error">{restaurantErrors.rating}</span> : null}
+                        </label>
+                        <label>
+                          Minutes
+                          <input
+                            aria-invalid={restaurantErrors.minutes ? 'true' : 'false'}
+                            type="number"
+                            value={restaurantForm.minutes}
+                            onChange={(event) => setRestaurantField('minutes', event.target.value)}
+                          />
+                          {restaurantErrors.minutes ? <span className="field-error">{restaurantErrors.minutes}</span> : null}
+                        </label>
+                        <label>
+                          Delivery fee
+                          <input
+                            aria-invalid={restaurantErrors.deliveryFee ? 'true' : 'false'}
+                            type="number"
+                            value={restaurantForm.deliveryFee}
+                            onChange={(event) => setRestaurantField('deliveryFee', event.target.value)}
+                          />
+                          {restaurantErrors.deliveryFee ? (
+                            <span className="field-error">{restaurantErrors.deliveryFee}</span>
                           ) : null}
                         </label>
                       </div>
                       <label>
-                        Description
+                        Color
                         <input
-                          aria-invalid={restaurantErrors.menu?.[index]?.description ? 'true' : 'false'}
-                          value={item.description}
-                          onChange={(event) => setMenuField(index, 'description', event.target.value)}
+                          aria-invalid={restaurantErrors.colorHex ? 'true' : 'false'}
+                          value={restaurantForm.colorHex}
+                          onChange={(event) => setRestaurantField('colorHex', event.target.value)}
+                          placeholder="#FFE7A3"
                         />
-                        {restaurantErrors.menu?.[index]?.description ? (
-                          <span className="field-error">{restaurantErrors.menu[index].description}</span>
-                        ) : null}
+                        {restaurantErrors.colorHex ? <span className="field-error">{restaurantErrors.colorHex}</span> : null}
                       </label>
                       <label className="image-upload">
-                        Item image
+                        Restaurant image
                         <input
                           accept="image/*"
                           type="file"
                           onChange={(event) => {
                             const file = event.target.files?.[0];
                             if (file) {
-                              void setMenuImage(index, file);
+                              void setRestaurantImage(file);
                             }
                           }}
                         />
-                        {item.imageUrl ? (
-                          <div className="image-preview image-preview-small">
-                            <img alt={`${item.name || 'Menu item'} preview`} src={item.imageUrl} />
+                        {restaurantForm.imageUrl ? (
+                          <div className="image-preview">
+                            <img alt="Restaurant preview" src={restaurantForm.imageUrl} />
                           </div>
                         ) : null}
                       </label>
-                      <div className="menu-row-bottom">
+
+                      <div className="menu-editor">
+                        <div className="menu-editor-head">
+                          <strong>Menu items</strong>
+                        </div>
+
+                        {restaurantForm.menu.map((item, index) => (
+                          <div className="menu-row" key={index}>
+                            <div className="two-col">
+                              <label>
+                                Item name
+                                <input
+                                  aria-invalid={restaurantErrors.menu?.[index]?.name ? 'true' : 'false'}
+                                  value={item.name}
+                                  onChange={(event) => setMenuField(index, 'name', event.target.value)}
+                                />
+                                {restaurantErrors.menu?.[index]?.name ? (
+                                  <span className="field-error">{restaurantErrors.menu[index].name}</span>
+                                ) : null}
+                              </label>
+                              <label>
+                                Tag
+                                <input
+                                  aria-invalid={restaurantErrors.menu?.[index]?.tag ? 'true' : 'false'}
+                                  value={item.tag}
+                                  onChange={(event) => setMenuField(index, 'tag', event.target.value)}
+                                />
+                                {restaurantErrors.menu?.[index]?.tag ? (
+                                  <span className="field-error">{restaurantErrors.menu[index].tag}</span>
+                                ) : null}
+                              </label>
+                            </div>
+                            <label>
+                              Description
+                              <input
+                                aria-invalid={restaurantErrors.menu?.[index]?.description ? 'true' : 'false'}
+                                value={item.description}
+                                onChange={(event) => setMenuField(index, 'description', event.target.value)}
+                              />
+                              {restaurantErrors.menu?.[index]?.description ? (
+                                <span className="field-error">{restaurantErrors.menu[index].description}</span>
+                              ) : null}
+                            </label>
+                            <label className="image-upload">
+                              Item image
+                              <input
+                                accept="image/*"
+                                type="file"
+                                onChange={(event) => {
+                                  const file = event.target.files?.[0];
+                                  if (file) {
+                                    void setMenuImage(index, file);
+                                  }
+                                }}
+                              />
+                              {item.imageUrl ? (
+                                <div className="image-preview image-preview-small">
+                                  <img alt={`${item.name || 'Menu item'} preview`} src={item.imageUrl} />
+                                </div>
+                              ) : null}
+                            </label>
+                            <div className="menu-row-bottom">
+                              <label>
+                                Price
+                                <input
+                                  aria-invalid={restaurantErrors.menu?.[index]?.price ? 'true' : 'false'}
+                                  type="number"
+                                  value={item.price}
+                                  onChange={(event) => setMenuField(index, 'price', event.target.value)}
+                                />
+                                {restaurantErrors.menu?.[index]?.price ? (
+                                  <span className="field-error">{restaurantErrors.menu[index].price}</span>
+                                ) : null}
+                              </label>
+                              <label>
+                                Category
+                                <select
+                                  value={item.category}
+                                  onChange={(event) => setMenuField(index, 'category', event.target.value)}
+                                >
+                                  {categories.map((category) => (
+                                    <option key={category} value={category}>
+                                      {category}
+                                    </option>
+                                  ))}
+                                </select>
+                              </label>
+                              <div className="row-actions">
+                                <button className="button button-ghost" type="button" onClick={addMenuRow}>
+                                  Add row
+                                </button>
+                                <button className="button button-ghost" type="button" onClick={() => removeMenuRow(index)}>
+                                  Remove
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+
+                      <button className="button button-primary" disabled={busy} type="submit">
+                        {editingRestaurantId ? 'Update restaurant' : 'Create restaurant'}
+                      </button>
+                    </form>
+                  </div>
+
+                  <div className="panel">
+                    <div className="section-head">
+                      <div>
+                        <p className="eyebrow">Existing restaurants</p>
+                        <h3>Edit or delete restaurants</h3>
+                      </div>
+                      <span className="muted">{restaurants.length} records</span>
+                    </div>
+                    <div className="restaurant-list">
+                      {pagedRestaurants.map((restaurant) => (
+                        <article className="admin-restaurant-row" key={restaurant.id}>
+                          <div>
+                            <span>{restaurant.name}</span>
+                            <small>{restaurant.cuisine}</small>
+                          </div>
+                          <div className="restaurant-row-actions">
+                            <button
+                              className="button button-ghost"
+                              type="button"
+                              onClick={() => openRestaurantEditor(restaurant)}
+                            >
+                              Edit
+                            </button>
+                            <button
+                              className="button button-danger"
+                              disabled={busy}
+                              type="button"
+                              onClick={() => handleDeleteRestaurant(restaurant)}
+                            >
+                              Delete
+                            </button>
+                          </div>
+                        </article>
+                      ))}
+                    </div>
+                    {restaurants.length === 0 ? <div className="empty-state">No restaurants found.</div> : null}
+                    {restaurants.length > restaurantsPerPage ? (
+                      <div className="pagination">
+                        <button
+                          className="button button-ghost"
+                          disabled={restaurantPage === 1}
+                          type="button"
+                          onClick={() => setRestaurantPage((page) => Math.max(1, page - 1))}
+                        >
+                          Previous
+                        </button>
+                        <span className="muted">
+                          Page {restaurantPage} of {restaurantPageCount}
+                        </span>
+                        <button
+                          className="button button-ghost"
+                          disabled={restaurantPage === restaurantPageCount}
+                          type="button"
+                          onClick={() => setRestaurantPage((page) => Math.min(restaurantPageCount, page + 1))}
+                        >
+                          Next
+                        </button>
+                      </div>
+                    ) : null}
+                  </div>
+                </div>
+              ) : null}
+
+              {adminSection === 'shops' ? (
+                <div className="admin-split">
+                  <div className="panel">
+                    <div className="section-head">
+                      <div>
+                        <p className="eyebrow">Shop editor</p>
+                        <h3>{editingShopId ? 'Edit shop' : 'Create shop'}</h3>
+                      </div>
+                      <button className="button button-ghost" type="button" onClick={resetShopForm}>
+                        New
+                      </button>
+                    </div>
+
+                    <form className="stack" onSubmit={handleShopSubmit}>
+                      <div className="two-col">
                         <label>
-                          Price
+                          Name
                           <input
-                            aria-invalid={restaurantErrors.menu?.[index]?.price ? 'true' : 'false'}
-                            type="number"
-                            value={item.price}
-                            onChange={(event) => setMenuField(index, 'price', event.target.value)}
+                            aria-invalid={shopErrors.name ? 'true' : 'false'}
+                            value={shopForm.name}
+                            onChange={(event) => setShopField('name', event.target.value)}
                           />
-                          {restaurantErrors.menu?.[index]?.price ? (
-                            <span className="field-error">{restaurantErrors.menu[index].price}</span>
-                          ) : null}
+                          {shopErrors.name ? <span className="field-error">{shopErrors.name}</span> : null}
                         </label>
                         <label>
-                          Category
+                          Active
                           <select
-                            value={item.category}
-                            onChange={(event) => setMenuField(index, 'category', event.target.value)}
+                            value={shopForm.active ? 'yes' : 'no'}
+                            onChange={(event) => setShopField('active', event.target.value === 'yes')}
                           >
-                            {categories.map((category) => (
-                              <option key={category} value={category}>
-                                {category}
-                              </option>
-                            ))}
+                            <option value="yes">Yes</option>
+                            <option value="no">No</option>
                           </select>
                         </label>
-                        <div className="row-actions">
-                          <button
-                            className="button button-ghost"
-                            type="button"
-                            onClick={addMenuRow}
-                          >
-                            Add row
-                          </button>
-                          <button
-                            className="button button-ghost"
-                            type="button"
-                            onClick={() => removeMenuRow(index)}
-                          >
-                            Remove
-                          </button>
-                        </div>
                       </div>
-                    </div>
-                  ))}
-                </div>
+                      <label>
+                        Description
+                        <input
+                          value={shopForm.description}
+                          onChange={(event) => setShopField('description', event.target.value)}
+                          placeholder="Marketplace shop description"
+                        />
+                      </label>
+                      <div className="three-col">
+                        <label>
+                          Delivery fee
+                          <input
+                            aria-invalid={shopErrors.deliveryFee ? 'true' : 'false'}
+                            type="number"
+                            value={shopForm.deliveryFee}
+                            onChange={(event) => setShopField('deliveryFee', event.target.value)}
+                          />
+                          {shopErrors.deliveryFee ? <span className="field-error">{shopErrors.deliveryFee}</span> : null}
+                        </label>
+                        <label>
+                          Color
+                          <input
+                            aria-invalid={shopErrors.colorHex ? 'true' : 'false'}
+                            value={shopForm.colorHex}
+                            onChange={(event) => setShopField('colorHex', event.target.value)}
+                          />
+                          {shopErrors.colorHex ? <span className="field-error">{shopErrors.colorHex}</span> : null}
+                        </label>
+                        <label className="image-upload">
+                          Shop image
+                          <input
+                            accept="image/*"
+                            type="file"
+                            onChange={(event) => {
+                              const file = event.target.files?.[0];
+                              if (file) {
+                                void setShopImage(file);
+                              }
+                            }}
+                          />
+                          {shopForm.imageUrl ? (
+                            <div className="image-preview">
+                              <img alt="Shop preview" src={shopForm.imageUrl} />
+                            </div>
+                          ) : null}
+                        </label>
+                      </div>
 
-                <button className="button button-primary" disabled={busy} type="submit">
-                  {editingRestaurantId ? 'Update restaurant' : 'Create restaurant'}
-                </button>
-              </form>
-            </div>
+                      <div className="menu-editor">
+                        <div className="menu-editor-head">
+                          <strong>Products</strong>
+                        </div>
 
-            <div className="panel">
-              <div className="restaurant-list">
-                <div className="section-head">
-                  <div>
-                    <p className="eyebrow">Existing restaurants</p>
-                    <h3>Edit or delete restaurants</h3>
+                        {shopForm.products.map((product, index) => (
+                          <div className="menu-row" key={index}>
+                            <div className="two-col">
+                              <label>
+                                Product name
+                                <input
+                                  aria-invalid={shopErrors.products?.[index]?.name ? 'true' : 'false'}
+                                  value={product.name}
+                                  onChange={(event) => setShopProductField(index, 'name', event.target.value)}
+                                />
+                                {shopErrors.products?.[index]?.name ? (
+                                  <span className="field-error">{shopErrors.products[index].name}</span>
+                                ) : null}
+                              </label>
+                              <label>
+                                Category
+                                <input
+                                  value={product.category}
+                                  onChange={(event) => setShopProductField(index, 'category', event.target.value)}
+                                />
+                              </label>
+                            </div>
+                            <label>
+                              Description
+                              <input
+                                aria-invalid={shopErrors.products?.[index]?.description ? 'true' : 'false'}
+                                value={product.description}
+                                onChange={(event) => setShopProductField(index, 'description', event.target.value)}
+                              />
+                              {shopErrors.products?.[index]?.description ? (
+                                <span className="field-error">{shopErrors.products[index].description}</span>
+                              ) : null}
+                            </label>
+                            <label className="image-upload">
+                              Product image
+                              <input
+                                accept="image/*"
+                                type="file"
+                                onChange={(event) => {
+                                  const file = event.target.files?.[0];
+                                  if (file) {
+                                    void setShopProductImage(index, file);
+                                  }
+                                }}
+                              />
+                              {product.imageUrl ? (
+                                <div className="image-preview image-preview-small">
+                                  <img alt={`${product.name || 'Product'} preview`} src={product.imageUrl} />
+                                </div>
+                              ) : null}
+                            </label>
+                            <div className="menu-row-bottom">
+                              <label>
+                                Price
+                                <input
+                                  aria-invalid={shopErrors.products?.[index]?.price ? 'true' : 'false'}
+                                  type="number"
+                                  value={product.price}
+                                  onChange={(event) => setShopProductField(index, 'price', event.target.value)}
+                                />
+                                {shopErrors.products?.[index]?.price ? (
+                                  <span className="field-error">{shopErrors.products[index].price}</span>
+                                ) : null}
+                              </label>
+                              <label>
+                                Stock
+                                <input
+                                  aria-invalid={shopErrors.products?.[index]?.stockQty ? 'true' : 'false'}
+                                  type="number"
+                                  value={product.stockQty}
+                                  onChange={(event) => setShopProductField(index, 'stockQty', event.target.value)}
+                                  disabled={product.trackStock === false}
+                                />
+                                {shopErrors.products?.[index]?.stockQty ? (
+                                  <span className="field-error">{shopErrors.products[index].stockQty}</span>
+                                ) : null}
+                              </label>
+                              <label className="checkbox-row">
+                                <input
+                                  checked={product.trackStock !== false}
+                                  type="checkbox"
+                                  onChange={(event) => setShopProductField(index, 'trackStock', event.target.checked)}
+                                />
+                                Track stock
+                              </label>
+                              <div className="row-actions">
+                                <button className="button button-ghost" type="button" onClick={addShopProductRow}>
+                                  Add row
+                                </button>
+                                <button className="button button-ghost" type="button" onClick={() => removeShopProductRow(index)}>
+                                  Remove
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+
+                      <button className="button button-primary" disabled={busy} type="submit">
+                        {editingShopId ? 'Update shop' : 'Create shop'}
+                      </button>
+                    </form>
                   </div>
-                  <span className="muted">{restaurants.length} records</span>
+
+                  <div className="panel">
+                    <div className="section-head">
+                      <div>
+                        <p className="eyebrow">Existing shops</p>
+                        <h3>Edit or delete shops</h3>
+                      </div>
+                      <span className="muted">{shops.length} records</span>
+                    </div>
+                    <div className="restaurant-list">
+                      {shops.map((shop) => (
+                        <article className="admin-restaurant-row" key={shop.id}>
+                          <div>
+                            <span>{shop.name}</span>
+                            <small>{(shop.products || []).length} products</small>
+                          </div>
+                          <div className="restaurant-row-actions">
+                            <button className="button button-ghost" type="button" onClick={() => openShopEditor(shop)}>
+                              Edit
+                            </button>
+                            <button
+                              className="button button-danger"
+                              disabled={busy}
+                              type="button"
+                              onClick={() => handleDeleteShop(shop)}
+                            >
+                              Delete
+                            </button>
+                          </div>
+                        </article>
+                      ))}
+                    </div>
+                    {shops.length === 0 ? <div className="empty-state">No shops found.</div> : null}
+                  </div>
                 </div>
-                {pagedRestaurants.map((restaurant) => (
-                  <article className="admin-restaurant-row" key={restaurant.id}>
-                    <div>
-                      <span>{restaurant.name}</span>
-                      <small>{restaurant.cuisine}</small>
-                    </div>
-                    <div className="restaurant-row-actions">
-                      <button
-                        className="button button-ghost"
-                        type="button"
-                        onClick={() => openRestaurantEditor(restaurant)}
-                      >
-                        Edit
-                      </button>
-                      <button
-                        className="button button-danger"
-                        disabled={busy}
-                        type="button"
-                        onClick={() => handleDeleteRestaurant(restaurant)}
-                      >
-                        Delete
-                      </button>
-                    </div>
-                  </article>
-                ))}
-                {restaurants.length === 0 ? <div className="empty-state">No restaurants found.</div> : null}
-                {restaurants.length > restaurantsPerPage ? (
-                  <div className="pagination">
-                    <button
-                      className="button button-ghost"
-                      disabled={restaurantPage === 1}
-                      type="button"
-                      onClick={() => setRestaurantPage((page) => Math.max(1, page - 1))}
-                    >
-                      Previous
-                    </button>
-                    <span className="muted">
-                      Page {restaurantPage} of {restaurantPageCount}
-                    </span>
-                    <button
-                      className="button button-ghost"
-                      disabled={restaurantPage === restaurantPageCount}
-                      type="button"
-                      onClick={() => setRestaurantPage((page) => Math.min(restaurantPageCount, page + 1))}
-                    >
-                      Next
-                    </button>
-                  </div>
-                ) : null}
-              </div>
+              ) : null}
             </div>
           </section>
         ) : null}
