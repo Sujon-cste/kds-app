@@ -32,10 +32,22 @@ function createBlankCart() {
   return {
     merchantId: null,
     merchantType: 'restaurant',
+    merchantKey: '',
     merchantName: '',
     deliveryFee: 0,
     items: [],
   };
+}
+
+function getMerchantKey(merchant) {
+  if (!merchant) {
+    return '';
+  }
+  return `${merchant.type || 'restaurant'}:${merchant.id ?? ''}`;
+}
+
+function getMerchantKeyFromParts(type, id) {
+  return `${type || 'restaurant'}:${id ?? ''}`;
 }
 
 function normalizeCartState(value) {
@@ -48,12 +60,14 @@ function normalizeCartState(value) {
       ...createBlankCart(),
       ...value,
       items: Array.isArray(value.items) ? value.items : [],
+      merchantKey: value.merchantKey || getMerchantKeyFromParts(value.merchantType, value.merchantId),
     };
   }
 
   return {
     merchantId: value.restaurantId ?? null,
     merchantType: 'restaurant',
+    merchantKey: getMerchantKeyFromParts('restaurant', value.restaurantId ?? null),
     merchantName: value.restaurantName || '',
     deliveryFee: Number(value.deliveryFee || 0),
     items: Array.isArray(value.items) ? value.items : [],
@@ -302,16 +316,13 @@ function buildInventoryLookup(inventoryRows) {
 }
 
 function mergeRestaurantsWithInventory(restaurants, inventoryRows) {
-  const lookup = buildInventoryLookup(inventoryRows);
   return (restaurants || []).map((restaurant) => ({
     ...restaurant,
     menu: (restaurant.menu || []).map((item) => {
-      const match = lookup.get(`restaurant::${restaurant.name}::${item.name}`) || null;
-      const stockQty = match ? match.stockQty : item.stockQty ?? null;
       return {
         ...item,
-        stockQty,
-        trackStock: match ? match.trackStock : stockQty !== null && stockQty !== undefined,
+        stockQty: null,
+        trackStock: false,
       };
     }),
   }));
@@ -432,7 +443,7 @@ function App() {
   const [orderView, setOrderView] = useState('all');
   const [panel, setPanel] = useState('browse');
   const [browseView, setBrowseView] = useState('all');
-  const [selectedMerchantId, setSelectedMerchantId] = useState(null);
+  const [selectedMerchantKey, setSelectedMerchantKey] = useState(null);
   const [adminSection, setAdminSection] = useState('restaurants');
   const [inventorySearch, setInventorySearch] = useState('');
   const [inventoryDrafts, setInventoryDrafts] = useState({});
@@ -454,6 +465,7 @@ function App() {
       restaurants.map((restaurant) => ({
         id: restaurant.id,
         type: 'restaurant',
+        key: getMerchantKeyFromParts('restaurant', restaurant.id),
         name: restaurant.name,
         cuisine: restaurant.cuisine,
         active: restaurant.active !== false,
@@ -467,8 +479,8 @@ function App() {
         ...item,
           id: item.id || `${restaurant.id}-${item.name}`,
           type: 'food',
-          trackStock: item.stockQty !== null && item.stockQty !== undefined,
-          stockQty: item.stockQty ?? null,
+          trackStock: false,
+          stockQty: null,
         })),
       })),
     [restaurants],
@@ -479,6 +491,7 @@ function App() {
       shops.map((shop) => ({
         id: shop.id,
         type: 'shop',
+        key: getMerchantKeyFromParts('shop', shop.id),
         name: shop.name,
         active: shop.active !== false,
         deliveryFee: shop.deliveryFee,
@@ -526,19 +539,23 @@ function App() {
   }, [browseView, merchants, search]);
 
   const selectedMerchant = useMemo(
-    () => merchants.find((merchant) => merchant.id === selectedMerchantId) || filteredMerchants[0] || merchants[0] || null,
-    [filteredMerchants, merchants, selectedMerchantId],
+    () =>
+      merchants.find((merchant) => merchant.key === selectedMerchantKey) ||
+      filteredMerchants[0] ||
+      merchants[0] ||
+      null,
+    [filteredMerchants, merchants, selectedMerchantKey],
   );
 
   useEffect(() => {
     if (!filteredMerchants.length) {
       return;
     }
-    const stillVisible = filteredMerchants.some((merchant) => merchant.id === selectedMerchantId);
+    const stillVisible = filteredMerchants.some((merchant) => merchant.key === selectedMerchantKey);
     if (!stillVisible) {
-      setSelectedMerchantId(filteredMerchants[0].id);
+      setSelectedMerchantKey(filteredMerchants[0].key);
     }
-  }, [filteredMerchants, selectedMerchantId]);
+  }, [filteredMerchants, selectedMerchantKey]);
 
   const restaurantPageCount = Math.max(1, Math.ceil(restaurants.length / restaurantsPerPage));
   const pagedRestaurants = restaurants.slice(
@@ -634,11 +651,11 @@ function App() {
     if (!merchants.length) {
       return;
     }
-    const stillExists = merchants.some((merchant) => merchant.id === selectedMerchantId);
+    const stillExists = merchants.some((merchant) => merchant.key === selectedMerchantKey);
     if (!stillExists) {
-      setSelectedMerchantId(merchants[0].id);
+      setSelectedMerchantKey(merchants[0].key);
     }
-  }, [merchants, selectedMerchantId]);
+  }, [merchants, selectedMerchantKey]);
 
   useEffect(() => {
     if (restaurantPage > restaurantPageCount) {
@@ -833,7 +850,8 @@ function App() {
   function handleAddToCart(merchant, item) {
     clearNotifications();
     const currentCart = normalizeCartState(cart);
-    const isDifferentMerchant = currentCart.merchantId && currentCart.merchantId !== merchant.id;
+    const nextMerchantKey = merchant.key || getMerchantKey(merchant);
+    const isDifferentMerchant = currentCart.merchantKey && currentCart.merchantKey !== nextMerchantKey;
     if (isDifferentMerchant) {
       const confirmed = window.confirm(`Replace the current cart with ${merchant.name}?`);
       if (!confirmed) {
@@ -859,12 +877,13 @@ function App() {
       return {
         merchantId: merchant.id,
         merchantType: merchant.type,
+        merchantKey: nextMerchantKey,
         merchantName: merchant.name,
         deliveryFee: merchant.deliveryFee,
         items: nextItems,
       };
     });
-    setSelectedMerchantId(merchant.id);
+    setSelectedMerchantKey(nextMerchantKey);
   }
 
   function updateCartQuantity(itemId, delta) {
@@ -1801,10 +1820,10 @@ function App() {
               <div className="cards-grid">
                 {filteredMerchants.map((merchant) => (
                   <button
-                    className={`restaurant-card ${selectedMerchant?.id === merchant.id ? 'active' : ''}`}
-                    key={merchant.id}
+                    className={`restaurant-card ${selectedMerchant?.key === merchant.key ? 'active' : ''}`}
+                    key={merchant.key}
                     type="button"
-                    onClick={() => setSelectedMerchantId(merchant.id)}
+                    onClick={() => setSelectedMerchantKey(merchant.key)}
                     style={{ background: colorToCss(merchant.colorHex) }}
                   >
                     {merchant.imageUrl ? (

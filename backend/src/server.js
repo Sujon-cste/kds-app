@@ -204,7 +204,7 @@ function mapRestaurant(row, items) {
       tag: item.tag,
       category: item.category,
       imageUrl: item.image_url || '',
-      stockQty: Number(item.stock_qty ?? 0),
+      stockQty: null,
     })),
   };
 }
@@ -245,14 +245,9 @@ async function readRestaurants() {
   const placeholders = ids.map(() => '?').join(',');
   const [itemRows] = await pool.execute(
     `SELECT
-       restaurant_menu_items.*,
-       inventory_items.stock_qty
+       restaurant_menu_items.*
      FROM restaurant_menu_items
      INNER JOIN restaurants ON restaurants.id = restaurant_menu_items.restaurant_id
-     LEFT JOIN inventory_items
-       ON inventory_items.merchant_type = 'restaurant'
-      AND inventory_items.merchant_name = restaurants.name
-      AND inventory_items.item_name = restaurant_menu_items.name
      WHERE restaurant_menu_items.restaurant_id IN (${placeholders})
        AND restaurant_menu_items.is_active = 1
      ORDER BY restaurant_menu_items.id ASC`,
@@ -376,15 +371,9 @@ async function ensureSchema() {
   await ensureColumn('shop_products', 'track_stock', 'TINYINT(1) NOT NULL DEFAULT 1', 'stock_qty');
 
   await pool.execute(
-    `INSERT INTO inventory_items (merchant_type, merchant_name, item_name, stock_qty, track_stock, is_active)
-     SELECT 'restaurant', restaurants.name, restaurant_menu_items.name, 100
-     FROM restaurant_menu_items
-     INNER JOIN restaurants ON restaurants.id = restaurant_menu_items.restaurant_id
-     WHERE restaurant_menu_items.is_active = 1
-     ON DUPLICATE KEY UPDATE
-       stock_qty = VALUES(stock_qty),
-       track_stock = VALUES(track_stock),
-       is_active = 1`,
+    `UPDATE inventory_items
+     SET is_active = 0
+     WHERE merchant_type = 'restaurant'`,
   );
 
   await pool.execute(
@@ -423,7 +412,7 @@ async function ensureSchema() {
 
   await pool.execute(
     `INSERT INTO inventory_items (merchant_type, merchant_name, item_name, stock_qty, track_stock, is_active)
-     SELECT 'shop', shops.name, shop_products.name, shop_products.stock_qty, shop_products.track_stock
+     SELECT 'shop', shops.name, shop_products.name, shop_products.stock_qty, shop_products.track_stock, 1
      FROM shop_products
      INNER JOIN shops ON shops.id = shop_products.shop_id
      WHERE shop_products.is_active = 1
@@ -460,16 +449,7 @@ async function insertMenuItems(connection, restaurantId, menu) {
         imageUrl,
       ],
     );
-    if (restaurantName) {
-      await connection.execute(
-        `INSERT INTO inventory_items
-         (merchant_type, merchant_name, item_name, stock_qty)
-         VALUES ('restaurant', ?, ?, ?)
-         ON DUPLICATE KEY UPDATE stock_qty = inventory_items.stock_qty`,
-        [restaurantName, item.name, Number(item.stockQty || 100)],
-      );
-    }
-  }
+}
 }
 
 async function syncShopInventoryItem(connection, shopName, productName, stockQty, trackStock) {
@@ -513,6 +493,10 @@ async function insertShopProducts(connection, shopId, shopName, products) {
 }
 
 async function reserveInventoryStock(connection, merchantType, merchantName, itemName, quantity) {
+  if (merchantType !== 'shop') {
+    return;
+  }
+
   const [rows] = await connection.execute(
     `SELECT id, stock_qty, track_stock
      FROM inventory_items
@@ -553,7 +537,7 @@ async function readInventoryItems() {
   const [rows] = await pool.execute(
     `SELECT id, merchant_type, merchant_name, item_name, stock_qty, track_stock, created_at, updated_at
      FROM inventory_items
-     WHERE is_active = 1
+     WHERE is_active = 1 AND merchant_type = 'shop'
      ORDER BY merchant_type ASC, merchant_name ASC, item_name ASC`,
   );
   return rows;
@@ -710,12 +694,6 @@ app.put('/restaurants/:id', auth('admin'), asyncRoute(async (request, response) 
       [restaurantId],
     );
     await insertMenuItems(connection, restaurantId, menu);
-    if (previousName && previousName !== name) {
-      await connection.execute(
-        'UPDATE inventory_items SET merchant_name = ? WHERE merchant_type = ? AND merchant_name = ?',
-        [name, 'restaurant', previousName],
-      );
-    }
 
     await connection.commit();
     const restaurants = await readRestaurants();
@@ -973,7 +951,9 @@ app.post('/orders', auth('customer'), asyncRoute(async (request, response) => {
         throw new Error('Invalid order item payload');
       }
 
-      await reserveInventoryStock(connection, merchantType, restaurantName, itemName, quantity);
+      if (merchantType === 'shop') {
+        await reserveInventoryStock(connection, merchantType, restaurantName, itemName, quantity);
+      }
       await connection.execute(
         `INSERT INTO order_items
          (order_id, item_name, item_description, item_tag, unit_price, quantity, line_total)

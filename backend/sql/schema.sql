@@ -151,20 +151,11 @@ SELECT 3, 'French Fries', 'Salted fries with ketchup', 90, 'Side'
 WHERE NOT EXISTS (SELECT 1 FROM restaurant_menu_items WHERE restaurant_id = 3 AND name = 'French Fries');
 
 INSERT INTO inventory_items (merchant_type, merchant_name, item_name, stock_qty, track_stock, is_active)
-SELECT 'restaurant', restaurants.name, restaurant_menu_items.name, 100
-FROM restaurant_menu_items
-INNER JOIN restaurants ON restaurants.id = restaurant_menu_items.restaurant_id
-ON DUPLICATE KEY UPDATE
-  stock_qty = VALUES(stock_qty),
-  track_stock = VALUES(track_stock),
-  is_active = 1;
-
-INSERT INTO inventory_items (merchant_type, merchant_name, item_name, stock_qty, track_stock, is_active)
 VALUES
-  ('shop', 'Tech Hub', 'Wireless Headphones', 18),
-  ('shop', 'Tech Hub', 'Smart Watch', 9),
-  ('shop', 'Home Bazaar', 'Laundry Detergent', 25),
-  ('shop', 'Home Bazaar', 'Electric Kettle', 6)
+  ('shop', 'Tech Hub', 'Wireless Headphones', 18, 1, 1),
+  ('shop', 'Tech Hub', 'Smart Watch', 9, 1, 1),
+  ('shop', 'Home Bazaar', 'Laundry Detergent', 25, 1, 1),
+  ('shop', 'Home Bazaar', 'Electric Kettle', 6, 1, 1)
 ON DUPLICATE KEY UPDATE
   stock_qty = VALUES(stock_qty),
   track_stock = VALUES(track_stock),
