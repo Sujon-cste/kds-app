@@ -282,6 +282,77 @@ function normalizeOrders(value) {
   return Array.isArray(value) ? value.filter((order) => order && typeof order === 'object') : [];
 }
 
+function normalizeInventoryRows(value) {
+  return Array.isArray(value) ? value.filter((item) => item && typeof item === 'object') : [];
+}
+
+function buildInventoryLookup(inventoryRows) {
+  const lookup = new Map();
+  normalizeInventoryRows(inventoryRows).forEach((row) => {
+    lookup.set(
+      `${row.merchant_type}::${row.merchant_name}::${row.item_name}`,
+      {
+        id: row.id,
+        stockQty: Number(row.stock_qty || 0),
+        trackStock: row.track_stock !== 0,
+      },
+    );
+  });
+  return lookup;
+}
+
+function mergeRestaurantsWithInventory(restaurants, inventoryRows) {
+  const lookup = buildInventoryLookup(inventoryRows);
+  return (restaurants || []).map((restaurant) => ({
+    ...restaurant,
+    menu: (restaurant.menu || []).map((item) => {
+      const match = lookup.get(`restaurant::${restaurant.name}::${item.name}`) || null;
+      const stockQty = match ? match.stockQty : item.stockQty ?? null;
+      return {
+        ...item,
+        stockQty,
+        trackStock: match ? match.trackStock : stockQty !== null && stockQty !== undefined,
+      };
+    }),
+  }));
+}
+
+function mergeShopsWithInventory(shops, inventoryRows) {
+  const lookup = buildInventoryLookup(inventoryRows);
+  return (shops || []).map((shop) => ({
+    ...shop,
+    products: (shop.products || []).map((product) => {
+      const match = lookup.get(`shop::${shop.name}::${product.name}`) || null;
+      if (!match) {
+        return product;
+      }
+
+      return {
+        ...product,
+        stockQty: match.stockQty,
+        trackStock: match.trackStock,
+      };
+    }),
+  }));
+}
+
+function normalizeInventoryRow(row) {
+  if (!row || typeof row !== 'object') {
+    return null;
+  }
+
+  return {
+    id: row.id,
+    merchant_type: row.merchant_type,
+    merchant_name: row.merchant_name,
+    item_name: row.item_name,
+    stock_qty: Number(row.stock_qty || 0),
+    track_stock: row.track_stock !== 0,
+    created_at: row.created_at,
+    updated_at: row.updated_at,
+  };
+}
+
 function stripUndefined(value) {
   if (Array.isArray(value)) {
     return value.map(stripUndefined).filter((entry) => entry !== undefined);
@@ -330,9 +401,10 @@ function getReadableErrorMessage(message) {
 function App() {
   const [session, setSession] = useLocalStorageState('kds-react-session', null);
   const [cart, setCart] = useLocalStorageState('kds-react-cart', createBlankCart());
-  const [shops, setShops] = useLocalStorageState('kds-react-shops', createInitialShops());
+  const [shops, setShops] = useState([]);
   const [restaurants, setRestaurants] = useState([]);
   const [orders, setOrders] = useState([]);
+  const [inventoryItems, setInventoryItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -362,6 +434,8 @@ function App() {
   const [browseView, setBrowseView] = useState('all');
   const [selectedMerchantId, setSelectedMerchantId] = useState(null);
   const [adminSection, setAdminSection] = useState('restaurants');
+  const [inventorySearch, setInventorySearch] = useState('');
+  const [inventoryDrafts, setInventoryDrafts] = useState({});
   const [shopForm, setShopForm] = useState(blankShop);
   const [shopErrors, setShopErrors] = useState({ products: [] });
   const [editingShopId, setEditingShopId] = useState(null);
@@ -389,12 +463,12 @@ function App() {
         colorHex: restaurant.colorHex,
         imageUrl: restaurant.imageUrl,
         description: `${restaurant.cuisine} restaurant`,
-        items: (restaurant.menu || []).map((item) => ({
-          ...item,
+      items: (restaurant.menu || []).map((item) => ({
+        ...item,
           id: item.id || `${restaurant.id}-${item.name}`,
           type: 'food',
-          trackStock: false,
-          stockQty: null,
+          trackStock: item.stockQty !== null && item.stockQty !== undefined,
+          stockQty: item.stockQty ?? null,
         })),
       })),
     [restaurants],
@@ -482,6 +556,16 @@ function App() {
     );
   });
   const visibleOrders = orderView === 'today' ? todayOrders : normalizedOrders;
+  const filteredInventoryItems = useMemo(() => {
+    const query = inventorySearch.trim().toLowerCase();
+    return normalizeInventoryRows(inventoryItems).filter((item) => {
+      if (!query) {
+        return true;
+      }
+      const haystack = [item.merchant_name, item.item_name, item.merchant_type].join(' ').toLowerCase();
+      return haystack.includes(query);
+    });
+  }, [inventoryItems, inventorySearch]);
 
   const normalizedCart = normalizeCartState(cart);
   const cartSubtotal = normalizedCart.items.reduce((sum, entry) => sum + Number(entry.item.price) * entry.quantity, 0);
@@ -646,8 +730,15 @@ function App() {
   async function reloadData(token = session?.token) {
     clearNotifications();
     try {
-      const restaurantsPayload = await api.getRestaurants();
-      setRestaurants(restaurantsPayload.restaurants || []);
+      const [restaurantsPayload, shopsPayload, inventoryPayload] = await Promise.all([
+        api.getRestaurants(),
+        api.getShops(),
+        api.getInventory(),
+      ]);
+      const inventoryRows = normalizeInventoryRows(inventoryPayload.inventory);
+      setInventoryItems(inventoryRows);
+      setRestaurants(mergeRestaurantsWithInventory(restaurantsPayload.restaurants || [], inventoryRows));
+      setShops(mergeShopsWithInventory(shopsPayload.shops || [], inventoryRows));
       if (token) {
         const ordersPayload = await api.getOrders(token);
         setOrders(normalizeOrders(ordersPayload.orders));
@@ -1074,6 +1165,40 @@ function App() {
     }
   }
 
+  async function handleInventorySave(itemId) {
+    if (!session?.token) {
+      notify('error', 'Sign in as admin first.');
+      return;
+    }
+    const draft = inventoryDrafts[itemId];
+    const nextStockQty = Number(draft);
+    if (!Number.isInteger(nextStockQty) || nextStockQty < 0) {
+      notify('error', 'Enter a valid stock quantity.');
+      return;
+    }
+
+    clearNotifications();
+    setBusy(true);
+    try {
+      const payload = await api.updateInventory(session.token, itemId, { stockQty: nextStockQty });
+      const updated = normalizeInventoryRow(payload.inventory);
+      if (updated) {
+        setInventoryItems((current) => current.map((item) => (item.id === updated.id ? updated : item)));
+      }
+      setInventoryDrafts((current) => {
+        const next = { ...current };
+        delete next[itemId];
+        return next;
+      });
+      await reloadData();
+      notify('success', 'Stock updated.');
+    } catch (err) {
+      notify('error', err.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function handleDeleteRestaurant(restaurant) {
     if (!session?.token) {
       notify('error', 'Sign in as admin first.');
@@ -1245,8 +1370,6 @@ function App() {
     setBusy(true);
     try {
       const payload = {
-        id: editingShopId || `shop-${Date.now()}`,
-        type: 'shop',
         name: shopForm.name.trim(),
         deliveryFee: Number(shopForm.deliveryFee || 0),
         colorHex: shopForm.colorHex.trim() || '#DFF4FF',
@@ -1256,7 +1379,6 @@ function App() {
         products: shopForm.products
           .filter((product) => product.name.trim())
           .map((product) => ({
-            id: product.id || `${editingShopId || 'shop'}-${product.name.trim().toLowerCase().replace(/\s+/g, '-')}`,
             name: product.name.trim(),
             description: product.description.trim(),
             price: Number(product.price || 0),
@@ -1271,10 +1393,13 @@ function App() {
         throw new Error('Add at least one product.');
       }
 
-      setShops((current) => {
-        const next = current.filter((shop) => shop.id !== payload.id);
-        return [payload, ...next];
-      });
+      if (editingShopId) {
+        await api.updateShop(session.token, editingShopId, payload);
+      } else {
+        await api.createShop(session.token, payload);
+      }
+
+      await reloadData();
       resetShopForm();
       notify('success', editingShopId ? 'Shop updated.' : 'Shop created.');
     } catch (err) {
@@ -1284,7 +1409,7 @@ function App() {
     }
   }
 
-  function handleDeleteShop(shop) {
+  async function handleDeleteShop(shop) {
     if (!session?.token) {
       notify('error', 'Sign in as admin first.');
       return;
@@ -1293,11 +1418,20 @@ function App() {
     if (!confirmed) {
       return;
     }
-    setShops((current) => current.filter((entry) => entry.id !== shop.id));
-    if (editingShopId === shop.id) {
-      resetShopForm();
+    clearNotifications();
+    setBusy(true);
+    try {
+      await api.deleteShop(session.token, shop.id);
+      if (editingShopId === shop.id) {
+        resetShopForm();
+      }
+      await reloadData();
+      notify('success', 'Shop deleted.');
+    } catch (err) {
+      notify('error', err.message);
+    } finally {
+      setBusy(false);
     }
-    notify('success', 'Shop deleted.');
   }
 
   const selectedMenuItems = selectedMerchant?.items || [];
@@ -2016,6 +2150,13 @@ function App() {
                 >
                   Shops
                 </button>
+                <button
+                  className={adminSection === 'inventory' ? 'active' : ''}
+                  type="button"
+                  onClick={() => setAdminSection('inventory')}
+                >
+                  Inventory
+                </button>
               </div>
 
               <div className="admin-sidebar-foot">
@@ -2714,6 +2855,81 @@ function App() {
                     </div>
                     {shops.length === 0 ? <div className="empty-state">No shops found.</div> : null}
                   </div>
+                </div>
+              ) : null}
+
+              {adminSection === 'inventory' ? (
+                <div className="panel">
+                  <div className="section-head">
+                    <div>
+                      <p className="eyebrow">Inventory</p>
+                      <h3>Live stock editor</h3>
+                    </div>
+                    <span className="muted">{filteredInventoryItems.length} records</span>
+                  </div>
+
+                  <div className="toolbar-actions">
+                    <input
+                      value={inventorySearch}
+                      onChange={(event) => setInventorySearch(event.target.value)}
+                      placeholder="Search merchant or item"
+                    />
+                  </div>
+
+                  <div className="admin-table-wrap">
+                    <table className="admin-table admin-table-inventory">
+                      <thead>
+                        <tr>
+                          <th>Merchant</th>
+                          <th>Item</th>
+                          <th>Stock</th>
+                          <th>Updated</th>
+                          <th>Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {filteredInventoryItems.map((row) => (
+                          <tr key={row.id}>
+                            <td>
+                              <strong>{row.merchant_name}</strong>
+                              <div className="muted">{row.merchant_type}</div>
+                            </td>
+                            <td>{row.item_name}</td>
+                            <td>
+                              <input
+                                type="number"
+                                min="0"
+                                value={inventoryDrafts[row.id] ?? row.stock_qty}
+                                onChange={(event) =>
+                                  setInventoryDrafts((current) => ({
+                                    ...current,
+                                    [row.id]: event.target.value,
+                                  }))
+                                }
+                              />
+                            </td>
+                            <td className="muted">
+                              {row.updated_at ? new Date(row.updated_at).toLocaleString() : '-'}
+                            </td>
+                            <td>
+                              <button
+                                className="button button-primary"
+                                disabled={busy}
+                                type="button"
+                                onClick={() => handleInventorySave(row.id)}
+                              >
+                                Save
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  {filteredInventoryItems.length === 0 ? (
+                    <div className="empty-state">No inventory items found.</div>
+                  ) : null}
                 </div>
               ) : null}
             </div>

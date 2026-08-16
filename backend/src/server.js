@@ -197,10 +197,34 @@ function mapRestaurant(row, items) {
     imageUrl: row.image_url || '',
     approved: Boolean(row.is_approved),
     menu: items.map((item) => ({
+      id: item.id,
       name: item.name,
       description: item.description,
       price: item.price,
       tag: item.tag,
+      category: item.category,
+      imageUrl: item.image_url || '',
+      stockQty: Number(item.stock_qty ?? 0),
+    })),
+  };
+}
+
+function mapShop(row, items) {
+  return {
+    id: row.id,
+    name: row.name,
+    deliveryFee: row.delivery_fee,
+    colorHex: row.color_hex,
+    imageUrl: row.image_url || '',
+    active: Boolean(row.is_active),
+    description: row.description || '',
+    products: items.map((item) => ({
+      id: item.id,
+      name: item.name,
+      description: item.description,
+      price: item.price,
+      stockQty: Number(item.stock_qty ?? 0),
+      trackStock: Boolean(item.track_stock),
       category: item.category,
       imageUrl: item.image_url || '',
     })),
@@ -220,9 +244,18 @@ async function readRestaurants() {
   const ids = restaurantRows.map((restaurant) => restaurant.id);
   const placeholders = ids.map(() => '?').join(',');
   const [itemRows] = await pool.execute(
-    `SELECT * FROM restaurant_menu_items
-     WHERE restaurant_id IN (${placeholders}) AND is_active = 1
-     ORDER BY id ASC`,
+    `SELECT
+       restaurant_menu_items.*,
+       inventory_items.stock_qty
+     FROM restaurant_menu_items
+     INNER JOIN restaurants ON restaurants.id = restaurant_menu_items.restaurant_id
+     LEFT JOIN inventory_items
+       ON inventory_items.merchant_type = 'restaurant'
+      AND inventory_items.merchant_name = restaurants.name
+      AND inventory_items.item_name = restaurant_menu_items.name
+     WHERE restaurant_menu_items.restaurant_id IN (${placeholders})
+       AND restaurant_menu_items.is_active = 1
+     ORDER BY restaurant_menu_items.id ASC`,
     ids,
   );
   const itemsByRestaurantId = new Map();
@@ -235,6 +268,44 @@ async function readRestaurants() {
   return restaurantRows.map((restaurant) =>
     mapRestaurant(restaurant, itemsByRestaurantId.get(restaurant.id) || []),
   );
+}
+
+async function readShops() {
+  const [shopRows] = await pool.execute(
+    `SELECT * FROM shops
+     WHERE is_active = 1
+     ORDER BY created_at DESC, id DESC`,
+  );
+  if (shopRows.length === 0) {
+    return [];
+  }
+
+  const ids = shopRows.map((shop) => shop.id);
+  const placeholders = ids.map(() => '?').join(',');
+  const [itemRows] = await pool.execute(
+    `SELECT
+       shop_products.*,
+       inventory_items.stock_qty,
+       inventory_items.track_stock
+     FROM shop_products
+     INNER JOIN shops ON shops.id = shop_products.shop_id
+     LEFT JOIN inventory_items
+       ON inventory_items.merchant_type = 'shop'
+      AND inventory_items.merchant_name = shops.name
+      AND inventory_items.item_name = shop_products.name
+     WHERE shop_products.shop_id IN (${placeholders})
+       AND shop_products.is_active = 1
+     ORDER BY shop_products.id ASC`,
+    ids,
+  );
+  const itemsByShopId = new Map();
+  for (const item of itemRows) {
+    const items = itemsByShopId.get(item.shop_id) || [];
+    items.push(item);
+    itemsByShopId.set(item.shop_id, items);
+  }
+
+  return shopRows.map((shop) => mapShop(shop, itemsByShopId.get(shop.id) || []));
 }
 
 async function ensureColumn(tableName, columnName, definition, afterColumn) {
@@ -257,9 +328,118 @@ async function ensureColumn(tableName, columnName, definition, afterColumn) {
 async function ensureSchema() {
   await ensureColumn('restaurants', 'image_url', 'LONGTEXT NULL', 'color_hex');
   await ensureColumn('restaurant_menu_items', 'image_url', 'LONGTEXT NULL', 'tag');
+  await pool.execute(
+    `CREATE TABLE IF NOT EXISTS inventory_items (
+      id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+      merchant_type VARCHAR(20) NOT NULL,
+      merchant_name VARCHAR(160) NOT NULL,
+      item_name VARCHAR(160) NOT NULL,
+      stock_qty INT NOT NULL DEFAULT 100,
+      track_stock TINYINT(1) NOT NULL DEFAULT 1,
+      is_active TINYINT(1) NOT NULL DEFAULT 1,
+      created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      UNIQUE KEY uq_inventory_item (merchant_type, merchant_name, item_name)
+    )`,
+  );
+  await pool.execute(
+    `CREATE TABLE IF NOT EXISTS shops (
+      id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+      name VARCHAR(160) NOT NULL UNIQUE,
+      delivery_fee INT NOT NULL DEFAULT 50,
+      color_hex VARCHAR(20) NOT NULL DEFAULT '#DFF4FF',
+      image_url LONGTEXT NULL,
+      description VARCHAR(255) NOT NULL DEFAULT '',
+      is_active TINYINT(1) NOT NULL DEFAULT 1,
+      created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+    )`,
+  );
+
+  await pool.execute(
+    `CREATE TABLE IF NOT EXISTS shop_products (
+      id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+      shop_id BIGINT UNSIGNED NOT NULL,
+      name VARCHAR(160) NOT NULL,
+      description VARCHAR(255) NOT NULL,
+      price INT NOT NULL,
+      category VARCHAR(60) NOT NULL DEFAULT 'general',
+      image_url LONGTEXT NULL,
+      stock_qty INT NOT NULL DEFAULT 0,
+      track_stock TINYINT(1) NOT NULL DEFAULT 1,
+      is_active TINYINT(1) NOT NULL DEFAULT 1,
+      created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      CONSTRAINT fk_shop_products_shop FOREIGN KEY (shop_id) REFERENCES shops(id) ON DELETE CASCADE
+    )`,
+  );
+  await ensureColumn('inventory_items', 'track_stock', 'TINYINT(1) NOT NULL DEFAULT 1', 'stock_qty');
+  await ensureColumn('inventory_items', 'is_active', 'TINYINT(1) NOT NULL DEFAULT 1', 'track_stock');
+  await ensureColumn('shop_products', 'track_stock', 'TINYINT(1) NOT NULL DEFAULT 1', 'stock_qty');
+
+  await pool.execute(
+    `INSERT INTO inventory_items (merchant_type, merchant_name, item_name, stock_qty, track_stock, is_active)
+     SELECT 'restaurant', restaurants.name, restaurant_menu_items.name, 100
+     FROM restaurant_menu_items
+     INNER JOIN restaurants ON restaurants.id = restaurant_menu_items.restaurant_id
+     WHERE restaurant_menu_items.is_active = 1
+     ON DUPLICATE KEY UPDATE
+       stock_qty = VALUES(stock_qty),
+       track_stock = VALUES(track_stock),
+       is_active = 1`,
+  );
+
+  await pool.execute(
+    `INSERT INTO shops (id, name, delivery_fee, color_hex, image_url, description, is_active)
+     VALUES
+       (1, 'Tech Hub', 60, '#DFF4FF', NULL, 'Electronics and accessories', 1),
+       (2, 'Home Bazaar', 45, '#FFF1D6', NULL, 'Home essentials and utilities', 1)
+     ON DUPLICATE KEY UPDATE
+       delivery_fee = VALUES(delivery_fee),
+       color_hex = VALUES(color_hex),
+       image_url = VALUES(image_url),
+       description = VALUES(description),
+       is_active = 1`,
+  );
+
+  await pool.execute(
+    `INSERT INTO shop_products (shop_id, name, description, price, category, stock_qty, track_stock, is_active)
+     SELECT 1, 'Wireless Headphones', 'Comfort fit, noise isolation, and long battery life.', 2490, 'electronics', 18, 1, 1
+     WHERE NOT EXISTS (SELECT 1 FROM shop_products WHERE shop_id = 1 AND name = 'Wireless Headphones')`,
+  );
+  await pool.execute(
+    `INSERT INTO shop_products (shop_id, name, description, price, category, stock_qty, track_stock, is_active)
+     SELECT 1, 'Smart Watch', 'Track health, messages, and daily activity.', 3990, 'electronics', 9, 1, 1
+     WHERE NOT EXISTS (SELECT 1 FROM shop_products WHERE shop_id = 1 AND name = 'Smart Watch')`,
+  );
+  await pool.execute(
+    `INSERT INTO shop_products (shop_id, name, description, price, category, stock_qty, track_stock, is_active)
+     SELECT 2, 'Laundry Detergent', 'Family-size detergent for everyday use.', 320, 'home', 25, 1, 1
+     WHERE NOT EXISTS (SELECT 1 FROM shop_products WHERE shop_id = 2 AND name = 'Laundry Detergent')`,
+  );
+  await pool.execute(
+    `INSERT INTO shop_products (shop_id, name, description, price, category, stock_qty, track_stock, is_active)
+     SELECT 2, 'Electric Kettle', 'Compact kettle for quick tea and coffee.', 1590, 'home', 6, 1, 1
+     WHERE NOT EXISTS (SELECT 1 FROM shop_products WHERE shop_id = 2 AND name = 'Electric Kettle')`,
+  );
+
+  await pool.execute(
+    `INSERT INTO inventory_items (merchant_type, merchant_name, item_name, stock_qty, track_stock, is_active)
+     SELECT 'shop', shops.name, shop_products.name, shop_products.stock_qty, shop_products.track_stock
+     FROM shop_products
+     INNER JOIN shops ON shops.id = shop_products.shop_id
+     WHERE shop_products.is_active = 1
+     ON DUPLICATE KEY UPDATE
+       stock_qty = VALUES(stock_qty),
+       track_stock = VALUES(track_stock),
+       is_active = 1`,
+  );
 }
 
 async function insertMenuItems(connection, restaurantId, menu) {
+  const [restaurantRows] = await connection.execute(
+    'SELECT name FROM restaurants WHERE id = ? LIMIT 1',
+    [restaurantId],
+  );
+  const restaurantName = restaurantRows[0]?.name || '';
   for (const item of menu) {
     if (!item.name || !item.description || !item.price) {
       throw new Error('Every menu item needs name, description, and price');
@@ -280,7 +460,103 @@ async function insertMenuItems(connection, restaurantId, menu) {
         imageUrl,
       ],
     );
+    if (restaurantName) {
+      await connection.execute(
+        `INSERT INTO inventory_items
+         (merchant_type, merchant_name, item_name, stock_qty)
+         VALUES ('restaurant', ?, ?, ?)
+         ON DUPLICATE KEY UPDATE stock_qty = inventory_items.stock_qty`,
+        [restaurantName, item.name, Number(item.stockQty || 100)],
+      );
+    }
   }
+}
+
+async function syncShopInventoryItem(connection, shopName, productName, stockQty, trackStock) {
+  await connection.execute(
+    `INSERT INTO inventory_items (merchant_type, merchant_name, item_name, stock_qty, track_stock, is_active)
+     VALUES ('shop', ?, ?, ?, ?, 1)
+     ON DUPLICATE KEY UPDATE
+       stock_qty = VALUES(stock_qty),
+       track_stock = VALUES(track_stock),
+       is_active = 1`,
+    [shopName, productName, Number(stockQty || 0), trackStock ? 1 : 0],
+  );
+}
+
+async function insertShopProducts(connection, shopId, shopName, products) {
+  for (const product of products) {
+    if (!product.name || !product.description || !product.price) {
+      throw new Error('Every product needs name, description, and price');
+    }
+    const trackStock = product.trackStock !== false;
+    const stockQty = trackStock ? Number(product.stockQty || 0) : 0;
+    const category = String(product.category || 'general').trim() || 'general';
+    const imageUrl = String(product.imageUrl || '').trim() || null;
+    await connection.execute(
+      `INSERT INTO shop_products
+       (shop_id, name, description, price, category, image_url, stock_qty, track_stock)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        shopId,
+        product.name,
+        product.description,
+        Number(product.price),
+        category,
+        imageUrl,
+        stockQty,
+        trackStock ? 1 : 0,
+      ],
+    );
+    await syncShopInventoryItem(connection, shopName, product.name, stockQty, trackStock);
+  }
+}
+
+async function reserveInventoryStock(connection, merchantType, merchantName, itemName, quantity) {
+  const [rows] = await connection.execute(
+    `SELECT id, stock_qty, track_stock
+     FROM inventory_items
+     WHERE merchant_type = ? AND merchant_name = ? AND item_name = ?
+     FOR UPDATE`,
+    [merchantType, merchantName, itemName],
+  );
+
+  if (rows.length === 0) {
+    throw new Error(`${itemName} is not available right now`);
+  }
+
+  const inventoryItem = rows[0];
+  if (!Number(inventoryItem.track_stock)) {
+    return;
+  }
+  const available = Number(inventoryItem.stock_qty || 0);
+  if (available < quantity) {
+    throw new Error(`Only ${available} left in stock for ${itemName}`);
+  }
+
+  await connection.execute(
+    'UPDATE inventory_items SET stock_qty = stock_qty - ? WHERE id = ?',
+    [quantity, inventoryItem.id],
+  );
+  if (merchantType === 'shop') {
+    await connection.execute(
+      `UPDATE shop_products
+       SET stock_qty = stock_qty - ?
+       WHERE shop_id = (SELECT id FROM shops WHERE name = ? LIMIT 1)
+         AND name = ?`,
+      [quantity, merchantName, itemName],
+    );
+  }
+}
+
+async function readInventoryItems() {
+  const [rows] = await pool.execute(
+    `SELECT id, merchant_type, merchant_name, item_name, stock_qty, track_stock, created_at, updated_at
+     FROM inventory_items
+     WHERE is_active = 1
+     ORDER BY merchant_type ASC, merchant_name ASC, item_name ASC`,
+  );
+  return rows;
 }
 
 app.get(['/health', '/api/health'], (request, response) => {
@@ -344,6 +620,16 @@ app.get('/restaurants', asyncRoute(async (request, response) => {
   response.json({ restaurants });
 }));
 
+app.get('/shops', asyncRoute(async (request, response) => {
+  const shops = await readShops();
+  response.json({ shops });
+}));
+
+app.get('/inventory', asyncRoute(async (request, response) => {
+  const inventory = await readInventoryItems();
+  response.json({ inventory });
+}));
+
 app.post('/restaurants', auth('admin'), asyncRoute(async (request, response) => {
   const {
     name,
@@ -404,6 +690,11 @@ app.put('/restaurants/:id', auth('admin'), asyncRoute(async (request, response) 
   const connection = await pool.getConnection();
   try {
     await connection.beginTransaction();
+    const [existingRows] = await connection.execute(
+      'SELECT name FROM restaurants WHERE id = ? LIMIT 1',
+      [restaurantId],
+    );
+    const previousName = existingRows[0]?.name || '';
     const [updateResult] = await connection.execute(
       `UPDATE restaurants
        SET name = ?, cuisine = ?, rating = ?, minutes = ?, delivery_fee = ?, color_hex = ?, image_url = ?
@@ -419,6 +710,12 @@ app.put('/restaurants/:id', auth('admin'), asyncRoute(async (request, response) 
       [restaurantId],
     );
     await insertMenuItems(connection, restaurantId, menu);
+    if (previousName && previousName !== name) {
+      await connection.execute(
+        'UPDATE inventory_items SET merchant_name = ? WHERE merchant_type = ? AND merchant_name = ?',
+        [name, 'restaurant', previousName],
+      );
+    }
 
     await connection.commit();
     const restaurants = await readRestaurants();
@@ -451,8 +748,197 @@ app.delete('/restaurants/:id', auth('admin'), asyncRoute(async (request, respons
   response.json({ success: true });
 }));
 
+app.post('/shops', auth('admin'), asyncRoute(async (request, response) => {
+  const {
+    name,
+    deliveryFee = 50,
+    colorHex = '#DFF4FF',
+    imageUrl = '',
+    active = true,
+    description = '',
+    products,
+  } = request.body;
+  if (!name || !Array.isArray(products) || products.length === 0) {
+    response.status(400).json({ message: 'Shop name and products are required' });
+    return;
+  }
+
+  const connection = await pool.getConnection();
+  try {
+    await connection.beginTransaction();
+    const [shopResult] = await connection.execute(
+      `INSERT INTO shops
+       (name, delivery_fee, color_hex, image_url, description, is_active)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+      [name, deliveryFee, colorHex, String(imageUrl || '').trim() || null, description, active ? 1 : 0],
+    );
+
+    await insertShopProducts(connection, shopResult.insertId, name, products);
+
+    await connection.commit();
+    const shops = await readShops();
+    const shop = shops.find((entry) => entry.id === shopResult.insertId);
+    response.status(201).json({ shop });
+  } catch (error) {
+    await connection.rollback();
+    response.status(400).json({ message: error.message });
+  } finally {
+    connection.release();
+  }
+}));
+
+app.put('/shops/:id', auth('admin'), asyncRoute(async (request, response) => {
+  const {
+    name,
+    deliveryFee = 50,
+    colorHex = '#DFF4FF',
+    imageUrl = '',
+    active = true,
+    description = '',
+    products,
+  } = request.body;
+  const shopId = Number(request.params.id);
+  if (!shopId || !name || !Array.isArray(products) || products.length === 0) {
+    response.status(400).json({ message: 'Shop name and products are required' });
+    return;
+  }
+
+  const connection = await pool.getConnection();
+  try {
+    await connection.beginTransaction();
+    const [existingRows] = await connection.execute(
+      'SELECT name FROM shops WHERE id = ? LIMIT 1',
+      [shopId],
+    );
+    const previousName = existingRows[0]?.name || '';
+    const [updateResult] = await connection.execute(
+      `UPDATE shops
+       SET name = ?, delivery_fee = ?, color_hex = ?, image_url = ?, description = ?, is_active = ?
+       WHERE id = ?`,
+      [name, deliveryFee, colorHex, String(imageUrl || '').trim() || null, description, active ? 1 : 0, shopId],
+    );
+    if (updateResult.affectedRows === 0) {
+      throw new Error('Shop not found');
+    }
+
+    await connection.execute('DELETE FROM shop_products WHERE shop_id = ?', [shopId]);
+    await insertShopProducts(connection, shopId, name, products);
+    if (previousName && previousName !== name) {
+      await connection.execute(
+        'UPDATE inventory_items SET merchant_name = ? WHERE merchant_type = ? AND merchant_name = ?',
+        [name, 'shop', previousName],
+      );
+    }
+
+    await connection.commit();
+    const shops = await readShops();
+    const shop = shops.find((entry) => entry.id === shopId);
+    response.json({ shop });
+  } catch (error) {
+    await connection.rollback();
+    response.status(400).json({ message: error.message });
+  } finally {
+    connection.release();
+  }
+}));
+
+app.delete('/shops/:id', auth('admin'), asyncRoute(async (request, response) => {
+  const shopId = Number(request.params.id);
+  if (!shopId) {
+    response.status(400).json({ message: 'Invalid shop id' });
+    return;
+  }
+
+  const connection = await pool.getConnection();
+  try {
+    await connection.beginTransaction();
+    const [deleteResult] = await connection.execute(
+      'UPDATE shops SET is_active = 0 WHERE id = ? AND is_active = 1',
+      [shopId],
+    );
+    if (deleteResult.affectedRows === 0) {
+      response.status(404).json({ message: 'Shop not found' });
+      await connection.rollback();
+      return;
+    }
+
+    const [shopRows] = await connection.execute(
+      'SELECT name FROM shops WHERE id = ? LIMIT 1',
+      [shopId],
+    );
+    const shopName = shopRows[0]?.name || '';
+    if (shopName) {
+      await connection.execute(
+        'UPDATE inventory_items SET is_active = 0 WHERE merchant_type = ? AND merchant_name = ?',
+        ['shop', shopName],
+      );
+      await connection.execute(
+        'UPDATE shop_products SET is_active = 0 WHERE shop_id = ?',
+        [shopId],
+      );
+    }
+
+    await connection.commit();
+  } catch (error) {
+    await connection.rollback();
+    response.status(500).json({ message: error.message });
+    return;
+  } finally {
+    connection.release();
+  }
+
+  response.json({ success: true });
+}));
+
+app.patch('/inventory/:id', auth('admin'), asyncRoute(async (request, response) => {
+  const inventoryId = Number(request.params.id);
+  const stockQty = Number(request.body.stockQty);
+  if (!inventoryId || !Number.isInteger(stockQty) || stockQty < 0) {
+    response.status(400).json({ message: 'Enter a valid stock quantity' });
+    return;
+  }
+
+  const [updateResult] = await pool.execute(
+    'UPDATE inventory_items SET stock_qty = ? WHERE id = ?',
+    [stockQty, inventoryId],
+  );
+  if (updateResult.affectedRows === 0) {
+    response.status(404).json({ message: 'Inventory item not found' });
+    return;
+  }
+
+  const [rows] = await pool.execute(
+    `SELECT id, merchant_type, merchant_name, item_name, stock_qty, track_stock, created_at, updated_at
+     FROM inventory_items
+     WHERE id = ?
+     LIMIT 1`,
+    [inventoryId],
+  );
+  const inventory = rows[0] || null;
+  if (inventory?.merchant_type === 'shop') {
+    await pool.execute(
+      `UPDATE shop_products
+       SET stock_qty = ?
+       WHERE is_active = 1
+         AND shop_id = (SELECT id FROM shops WHERE name = ? LIMIT 1)
+         AND name = ?`,
+      [stockQty, inventory.merchant_name, inventory.item_name],
+    );
+  }
+  response.json({ inventory });
+}));
+
 app.post('/orders', auth('customer'), asyncRoute(async (request, response) => {
-  const { restaurantName, customerName, phone, address, subtotal, deliveryFee, lines } =
+  const {
+    merchantType = 'restaurant',
+    restaurantName,
+    customerName,
+    phone,
+    address,
+    subtotal,
+    deliveryFee,
+    lines,
+  } =
     request.body;
   if (!restaurantName || !address || !Array.isArray(lines) || lines.length === 0) {
     response.status(400).json({ message: 'Invalid order payload' });
@@ -481,18 +967,25 @@ app.post('/orders', auth('customer'), asyncRoute(async (request, response) => {
     );
 
     for (const line of lines) {
+      const quantity = Number(line.quantity || 0);
+      const itemName = String(line.item?.name || '').trim();
+      if (!itemName || !Number.isInteger(quantity) || quantity <= 0) {
+        throw new Error('Invalid order item payload');
+      }
+
+      await reserveInventoryStock(connection, merchantType, restaurantName, itemName, quantity);
       await connection.execute(
         `INSERT INTO order_items
          (order_id, item_name, item_description, item_tag, unit_price, quantity, line_total)
          VALUES (?, ?, ?, ?, ?, ?, ?)`,
         [
           orderResult.insertId,
-          line.item.name,
-          line.item.description,
-          line.item.tag,
-          line.item.price,
-          line.quantity,
-          line.item.price * line.quantity,
+          itemName,
+          String(line.item.description || ''),
+          String(line.item.tag || 'Item'),
+          Number(line.item.price || 0),
+          quantity,
+          Number(line.item.price || 0) * quantity,
         ],
       );
     }
@@ -502,7 +995,16 @@ app.post('/orders', auth('customer'), asyncRoute(async (request, response) => {
     response.status(201).json({ order: orders });
   } catch (error) {
     await connection.rollback();
-    response.status(500).json({ message: error.message });
+    const message = String(error.message || '');
+    if (message.includes('not available') || message.includes('left in stock')) {
+      response.status(409).json({ message });
+      return;
+    }
+    if (message.includes('Invalid order item payload')) {
+      response.status(400).json({ message });
+      return;
+    }
+    response.status(500).json({ message });
   } finally {
     connection.release();
   }

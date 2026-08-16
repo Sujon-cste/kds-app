@@ -52,6 +52,8 @@ export const api = {
   signUp: (name, phone, password) =>
     request('/auth/signup', { method: 'POST', body: { name, phone, password } }),
   getRestaurants: () => request('/restaurants'),
+  getShops: () => request('/shops'),
+  getInventory: () => request('/inventory'),
   getOrders: (token) => request('/orders', { token }),
   createOrder: (token, body) => request('/orders', { method: 'POST', token, body }),
   createRestaurant: (token, body) => request('/restaurants', { method: 'POST', token, body }),
@@ -59,6 +61,11 @@ export const api = {
     request(`/restaurants/${id}`, { method: 'PUT', token, body }),
   deleteRestaurant: (token, id) =>
     request(`/restaurants/${id}`, { method: 'DELETE', token }),
+  createShop: (token, body) => request('/shops', { method: 'POST', token, body }),
+  updateShop: (token, id, body) => request(`/shops/${id}`, { method: 'PUT', token, body }),
+  deleteShop: (token, id) => request(`/shops/${id}`, { method: 'DELETE', token }),
+  updateInventory: (token, id, body) =>
+    request(`/inventory/${id}`, { method: 'PATCH', token, body }),
   updateOrderStatus: (token, orderCode, body) =>
     request(`/orders/${orderCode}/status`, { method: 'PATCH', token, body }),
 };

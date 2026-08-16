@@ -72,6 +72,19 @@ CREATE TABLE IF NOT EXISTS order_items (
   CONSTRAINT fk_order_items_order FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE CASCADE
 );
 
+CREATE TABLE IF NOT EXISTS inventory_items (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  merchant_type VARCHAR(20) NOT NULL,
+  merchant_name VARCHAR(160) NOT NULL,
+  item_name VARCHAR(160) NOT NULL,
+  stock_qty INT NOT NULL DEFAULT 100,
+  track_stock TINYINT(1) NOT NULL DEFAULT 1,
+  is_active TINYINT(1) NOT NULL DEFAULT 1,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE KEY uq_inventory_item (merchant_type, merchant_name, item_name)
+);
+
 INSERT INTO users (name, phone, password_hash, role)
 VALUES (
   'KDS Super Admin',
@@ -136,3 +149,23 @@ INSERT INTO restaurant_menu_items
   (restaurant_id, name, description, price, tag)
 SELECT 3, 'French Fries', 'Salted fries with ketchup', 90, 'Side'
 WHERE NOT EXISTS (SELECT 1 FROM restaurant_menu_items WHERE restaurant_id = 3 AND name = 'French Fries');
+
+INSERT INTO inventory_items (merchant_type, merchant_name, item_name, stock_qty, track_stock, is_active)
+SELECT 'restaurant', restaurants.name, restaurant_menu_items.name, 100
+FROM restaurant_menu_items
+INNER JOIN restaurants ON restaurants.id = restaurant_menu_items.restaurant_id
+ON DUPLICATE KEY UPDATE
+  stock_qty = VALUES(stock_qty),
+  track_stock = VALUES(track_stock),
+  is_active = 1;
+
+INSERT INTO inventory_items (merchant_type, merchant_name, item_name, stock_qty, track_stock, is_active)
+VALUES
+  ('shop', 'Tech Hub', 'Wireless Headphones', 18),
+  ('shop', 'Tech Hub', 'Smart Watch', 9),
+  ('shop', 'Home Bazaar', 'Laundry Detergent', 25),
+  ('shop', 'Home Bazaar', 'Electric Kettle', 6)
+ON DUPLICATE KEY UPDATE
+  stock_qty = VALUES(stock_qty),
+  track_stock = VALUES(track_stock),
+  is_active = 1;
