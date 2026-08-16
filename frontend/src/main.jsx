@@ -282,6 +282,51 @@ function normalizeOrders(value) {
   return Array.isArray(value) ? value.filter((order) => order && typeof order === 'object') : [];
 }
 
+function stripUndefined(value) {
+  if (Array.isArray(value)) {
+    return value.map(stripUndefined).filter((entry) => entry !== undefined);
+  }
+
+  if (!value || typeof value !== 'object') {
+    return value;
+  }
+
+  return Object.fromEntries(
+    Object.entries(value)
+      .filter(([, entry]) => entry !== undefined)
+      .map(([key, entry]) => [key, stripUndefined(entry)]),
+  );
+}
+
+function serializeOrderItem(item) {
+  return stripUndefined({
+    id: item?.id ?? null,
+    name: item?.name ?? '',
+    description: item?.description ?? '',
+    price: Number(item?.price || 0),
+    type: item?.type ?? '',
+    tag: item?.tag ?? '',
+    category: item?.category ?? '',
+    imageUrl: item?.imageUrl ?? '',
+    trackStock: item?.trackStock ?? false,
+    stockQty: item?.stockQty ?? null,
+  });
+}
+
+function getReadableErrorMessage(message) {
+  const normalized = String(message || '').toLowerCase();
+
+  if (normalized.includes('bind parameters must not contain undefined')) {
+    return 'We could not place this order because some order data is missing. Please refresh the page, re-add the items, and try again.';
+  }
+
+  if (normalized.includes('sql') || normalized.includes('database') || normalized.includes('query')) {
+    return 'We could not place your order right now. Please try again in a moment.';
+  }
+
+  return message || 'Something went wrong. Please try again.';
+}
+
 function App() {
   const [session, setSession] = useLocalStorageState('kds-react-session', null);
   const [cart, setCart] = useLocalStorageState('kds-react-cart', createBlankCart());
@@ -774,17 +819,21 @@ function App() {
 
     setBusy(true);
     try {
+      const lines = currentCart.items.map((entry) => ({
+        quantity: Number(entry.quantity || 0),
+        item: serializeOrderItem(entry.item),
+      }));
+
       const payload = await api.createOrder(session.token, {
-        restaurantName: currentCart.merchantName,
+        merchantId: currentCart.merchantId ?? null,
+        merchantType: currentCart.merchantType ?? 'restaurant',
+        restaurantName: currentCart.merchantName || '',
         customerName: checkoutName.trim(),
         phone: checkoutPhone.trim(),
         address: checkoutAddress.trim(),
         subtotal: cartSubtotal,
         deliveryFee: cartDeliveryFee,
-        lines: currentCart.items.map((entry) => ({
-          quantity: entry.quantity,
-          item: entry.item,
-        })),
+        lines,
       });
 
       const createdOrder = normalizeOrderPayload(payload);
@@ -800,7 +849,7 @@ function App() {
       notify('success', 'Order placed successfully.');
       await reloadData();
     } catch (err) {
-      notify('error', err.message);
+      notify('error', getReadableErrorMessage(err.message));
     } finally {
       setBusy(false);
     }
