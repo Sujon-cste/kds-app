@@ -150,7 +150,7 @@ class CategoryHeroCard extends StatelessWidget {
         return FadeTransition(
           opacity: fade,
           child: ScaleTransition(scale: scale, child: child),
-        );
+      );
       },
       child: Container(
         key: ValueKey(category),
@@ -561,6 +561,9 @@ class CartLine {
 enum UserRole {
   customer,
   admin,
+  rider,
+  regionalAdmin,
+  other,
 }
 
 enum OrderStatus {
@@ -600,6 +603,11 @@ class CustomerOrder {
     required this.createdAt,
     this.status = OrderStatus.pending,
     this.riderName,
+    this.riderPhone,
+    this.riderId,
+    this.riderIssue,
+    this.riderIssueAt,
+    this.history = const [],
   });
 
   final String id;
@@ -613,6 +621,11 @@ class CustomerOrder {
   final DateTime createdAt;
   OrderStatus status;
   String? riderName;
+  String? riderPhone;
+  int? riderId;
+  String? riderIssue;
+  String? riderIssueAt;
+  List<OrderHistoryEntry> history;
 
   int get total => subtotal + deliveryFee;
 
@@ -629,6 +642,11 @@ class CustomerOrder {
       'createdAt': createdAt.toIso8601String(),
       'status': status.name,
       'riderName': riderName,
+      'riderPhone': riderPhone,
+      'riderId': riderId,
+      'riderIssue': riderIssue,
+      'riderIssueAt': riderIssueAt,
+      'history': history.map((entry) => entry.toJson()).toList(),
     };
   }
 
@@ -647,6 +665,72 @@ class CustomerOrder {
       createdAt: DateTime.parse(json['createdAt'] as String),
       status: OrderStatus.values.byName(json['status'] as String),
       riderName: json['riderName'] as String?,
+      riderPhone: json['riderPhone'] as String?,
+      riderId: json['riderId'] as int?,
+      riderIssue: json['riderIssue'] as String?,
+      riderIssueAt: json['riderIssueAt'] as String?,
+      history: (json['history'] as List<dynamic>? ?? const [])
+          .map((entry) => OrderHistoryEntry.fromJson(entry as Map<String, dynamic>))
+          .toList(),
+    );
+  }
+}
+
+class OrderHistoryEntry {
+  OrderHistoryEntry({
+    required this.status,
+    required this.actorRole,
+    required this.actorName,
+    required this.note,
+    required this.timestamp,
+  });
+
+  final String? status;
+  final String actorRole;
+  final String actorName;
+  final String note;
+  final String timestamp;
+
+  factory OrderHistoryEntry.fromJson(Map<String, dynamic> json) {
+    return OrderHistoryEntry(
+      status: json['status'] as String?,
+      actorRole: json['actorRole'] as String? ?? '',
+      actorName: json['actorName'] as String? ?? '',
+      note: json['note'] as String? ?? '',
+      timestamp: json['timestamp'] as String? ?? '',
+    );
+  }
+
+  Map<String, Object?> toJson() {
+    return {
+      'status': status,
+      'actorRole': actorRole,
+      'actorName': actorName,
+      'note': note,
+      'timestamp': timestamp,
+    };
+  }
+}
+
+class UserSummary {
+  UserSummary({
+    required this.id,
+    required this.name,
+    required this.phone,
+    required this.role,
+  });
+
+  final int id;
+  final String name;
+  final String phone;
+  final UserRole role;
+
+  factory UserSummary.fromJson(Map<String, dynamic> json) {
+    return UserSummary(
+      id: json['id'] as int,
+      name: json['name'] as String,
+      phone: json['phone'] as String,
+      role: UserRole.values.byName(json['role'] as String),
     );
   }
 }
@@ -738,6 +822,24 @@ class ApiService {
     return (decoded['restaurants'] as List<dynamic>)
         .map((restaurant) =>
             Restaurant.fromJson(restaurant as Map<String, dynamic>))
+        .toList();
+  }
+
+  static Future<List<UserSummary>> fetchUsers({
+    required AuthSession session,
+    String? role,
+  }) async {
+    final response = await _getJson(
+      role == null ? '/users' : '/users?role=${Uri.encodeComponent(role)}',
+      token: session.token,
+    );
+    if (response.statusCode >= 400) {
+      throw Exception(_messageFrom(response));
+    }
+
+    final decoded = jsonDecode(response.body) as Map<String, dynamic>;
+    return (decoded['users'] as List<dynamic>)
+        .map((user) => UserSummary.fromJson(user as Map<String, dynamic>))
         .toList();
   }
 
@@ -889,14 +991,20 @@ class ApiService {
   static Future<CustomerOrder> updateOrderStatus({
     required AuthSession session,
     required CustomerOrder order,
-    required OrderStatus status,
+    OrderStatus? status,
+    int? riderId,
     String? riderName,
+    String? riderPhone,
+    String? issue,
   }) async {
     final response = await _patchJson(
       '/orders/${order.id}/status',
       {
-        'status': status.name,
+        if (status != null) 'status': status.name,
+        if (riderId != null) 'riderId': riderId,
         'riderName': riderName,
+        'riderPhone': riderPhone,
+        'issue': issue,
       },
       token: session.token,
     );
@@ -1528,6 +1636,7 @@ class _ShellScreenState extends State<ShellScreen> {
   final cart = <CartLine>[];
   final orders = kdsOrders;
   final restaurants = kdsRestaurants;
+  final riders = <UserSummary>[];
   bool ordersLoaded = true;
   AuthSession? session;
   String selectedCategory = 'food';
@@ -1544,8 +1653,11 @@ class _ShellScreenState extends State<ShellScreen> {
   Future<void> loadOrders() async {
     try {
       final savedRestaurants = await ApiService.fetchRestaurants();
-      if (session?.role == UserRole.admin) {
+      if (session?.role == UserRole.admin || session?.role == UserRole.regionalAdmin || session?.role == UserRole.rider) {
         final savedOrders = await ApiService.fetchOrders(session!);
+        final savedRiders = session?.role == UserRole.admin || session?.role == UserRole.regionalAdmin
+            ? await ApiService.fetchUsers(session: session!, role: 'rider')
+            : const <UserSummary>[];
         if (!mounted) {
           return;
         }
@@ -1556,6 +1668,9 @@ class _ShellScreenState extends State<ShellScreen> {
           orders
             ..clear()
             ..addAll(savedOrders);
+          riders
+            ..clear()
+            ..addAll(savedRiders);
           ordersLoaded = true;
         });
       } else {
@@ -1605,13 +1720,18 @@ class _ShellScreenState extends State<ShellScreen> {
       index = 0;
       selectedRestaurant = null;
       cart.clear();
-      ordersLoaded = nextSession.role != UserRole.admin;
-      if (nextSession.role != UserRole.admin) {
+      ordersLoaded = nextSession.role == UserRole.customer;
+      if (nextSession.role == UserRole.customer) {
         orders.clear();
+      } else {
+        orders.clear();
+        riders.clear();
       }
     });
 
-    if (nextSession.role == UserRole.admin) {
+    if (nextSession.role == UserRole.admin ||
+        nextSession.role == UserRole.regionalAdmin ||
+        nextSession.role == UserRole.rider) {
       await loadOrders();
     }
   }
@@ -1727,12 +1847,14 @@ class _ShellScreenState extends State<ShellScreen> {
   }
 
   Future<void> updateOrder(CustomerOrder order, OrderStatus status,
-      {String? riderName}) async {
+      {int? riderId, String? riderName, String? riderPhone}) async {
     final updatedOrder = await ApiService.updateOrderStatus(
       session: session!,
       order: order,
       status: status,
+      riderId: riderId,
       riderName: riderName,
+      riderPhone: riderPhone,
     );
     setState(() {
       final index = orders.indexWhere((existing) => existing.id == order.id);
@@ -1750,11 +1872,12 @@ class _ShellScreenState extends State<ShellScreen> {
       );
     }
 
-    if (session?.role == UserRole.admin) {
+    if (session?.role == UserRole.admin || session?.role == UserRole.regionalAdmin) {
       return AdminScreen(
         session: session!,
         orders: orders,
         restaurants: restaurants,
+        riders: riders,
         onUpdateOrder: updateOrder,
         onLogout: logout,
         onRestaurantCreated: (restaurant) {
@@ -1769,6 +1892,14 @@ class _ShellScreenState extends State<ShellScreen> {
             }
           });
         },
+        );
+    }
+
+    if (session?.role == UserRole.rider) {
+      return RiderScreen(
+        session: session!,
+        orders: orders,
+        onLogout: logout,
       );
     }
 
@@ -2673,6 +2804,328 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 }
 
+class RiderScreen extends StatefulWidget {
+  const RiderScreen({
+    super.key,
+    required this.session,
+    required this.orders,
+    required this.onLogout,
+  });
+
+  final AuthSession session;
+  final List<CustomerOrder> orders;
+  final VoidCallback onLogout;
+
+  @override
+  State<RiderScreen> createState() => _RiderScreenState();
+}
+
+class _RiderScreenState extends State<RiderScreen> {
+  Future<List<CustomerOrder>>? ordersFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    ordersFuture = ApiService.fetchOrders(widget.session);
+  }
+
+  void refreshOrders() {
+    setState(() => ordersFuture = ApiService.fetchOrders(widget.session));
+  }
+
+  Future<void> updateOrderStatus(CustomerOrder order, OrderStatus status) async {
+    try {
+      await ApiService.updateOrderStatus(
+        session: widget.session,
+        order: order,
+        status: status,
+      );
+      if (!mounted) {
+        return;
+      }
+      refreshOrders();
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(error.toString().replaceFirst('Exception: ', '')),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
+  }
+
+  Future<void> reportIssue(CustomerOrder order) async {
+    final controller = TextEditingController();
+    final issue = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: const Text('Report issue'),
+          content: TextField(
+            controller: controller,
+            maxLines: 4,
+            decoration: const InputDecoration(
+              hintText: 'Describe the delay, damaged item, customer issue, etc.',
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(dialogContext).pop(controller.text.trim()),
+              child: const Text('Submit'),
+            ),
+          ],
+        );
+      },
+    );
+    controller.dispose();
+
+    if (issue == null || issue.isEmpty) {
+      return;
+    }
+
+    try {
+      await ApiService.updateOrderStatus(
+        session: widget.session,
+        order: order,
+        issue: issue,
+      );
+      if (!mounted) {
+        return;
+      }
+      refreshOrders();
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(error.toString().replaceFirst('Exception: ', '')),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const KdsAppBarBrand(title: 'Rider dashboard'),
+        actions: [
+          IconButton(
+            tooltip: 'Refresh',
+            onPressed: refreshOrders,
+            icon: const Icon(Icons.refresh),
+          ),
+          IconButton(
+            tooltip: 'Logout',
+            onPressed: widget.onLogout,
+            icon: const Icon(Icons.logout),
+          ),
+        ],
+      ),
+      body: RefreshIndicator(
+        onRefresh: () async {
+          refreshOrders();
+          await ordersFuture!;
+        },
+        child: ListView(
+          padding: const EdgeInsets.all(16),
+          children: [
+            _Panel(
+              child: Row(
+                children: [
+                  const CircleAvatar(
+                    radius: 28,
+                    backgroundColor: Colors.white,
+                    backgroundImage: AssetImage('kds-logo.jpeg'),
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          widget.session.name,
+                          style: const TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                        Text(widget.session.phone,
+                            style: const TextStyle(color: kdsMuted)),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 18),
+            const Text(
+              'Assigned orders',
+              style: TextStyle(fontSize: 22, fontWeight: FontWeight.w900),
+            ),
+            const SizedBox(height: 12),
+            FutureBuilder<List<CustomerOrder>>(
+              future: ordersFuture,
+              builder: (context, snapshot) {
+                if (snapshot.connectionState == ConnectionState.waiting) {
+                  return const Padding(
+                    padding: EdgeInsets.all(32),
+                    child: Center(child: CircularProgressIndicator()),
+                  );
+                }
+                if (snapshot.hasError) {
+                  return _InfoStrip(
+                    icon: Icons.error_outline,
+                    title: 'Could not load assigned orders',
+                    subtitle: snapshot.error
+                        .toString()
+                        .replaceFirst('Exception: ', ''),
+                  );
+                }
+
+                final orders = snapshot.data ?? [];
+                if (orders.isEmpty) {
+                  return const _InfoStrip(
+                    icon: Icons.delivery_dining,
+                    title: 'No assigned orders',
+                    subtitle: 'New rider assignments will appear here.',
+                  );
+                }
+
+                return Column(
+                  children: [
+                    for (final order in orders) ...[
+                      _Panel(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: Text(
+                                    order.id,
+                                    style: const TextStyle(
+                                      fontSize: 17,
+                                      fontWeight: FontWeight.w900,
+                                    ),
+                                  ),
+                                ),
+                                _StatusChip(status: order.status),
+                              ],
+                            ),
+                            const SizedBox(height: 8),
+                            Text(order.restaurantName,
+                                style: const TextStyle(fontWeight: FontWeight.w800)),
+                            const SizedBox(height: 4),
+                            Text('${order.customerName} • ${order.phone}',
+                                style: const TextStyle(color: kdsMuted)),
+                            Text(order.address,
+                                style: const TextStyle(color: kdsMuted)),
+                            const SizedBox(height: 8),
+                            Text('Rider: ${order.riderName ?? widget.session.name}'),
+                            const SizedBox(height: 12),
+                            if (order.riderIssue != null && order.riderIssue!.isNotEmpty)
+                              _InfoStrip(
+                                icon: Icons.report_problem_outlined,
+                                title: 'Issue noted',
+                                subtitle: order.riderIssue!,
+                              ),
+                            if (order.status == OrderStatus.riderAssigned)
+                              Wrap(
+                                spacing: 8,
+                                runSpacing: 8,
+                                children: [
+                                  FilledButton.icon(
+                                    onPressed: () => updateOrderStatus(
+                                      order,
+                                      OrderStatus.onTheWay,
+                                    ),
+                                    icon: const Icon(Icons.delivery_dining),
+                                    label: const Text('Mark on the way'),
+                                  ),
+                                  OutlinedButton.icon(
+                                    onPressed: () => reportIssue(order),
+                                    icon: const Icon(Icons.report_problem_outlined),
+                                    label: const Text('Report issue'),
+                                  ),
+                                ],
+                              ),
+                            if (order.status == OrderStatus.onTheWay)
+                              Wrap(
+                                spacing: 8,
+                                runSpacing: 8,
+                                children: [
+                                  FilledButton.icon(
+                                    onPressed: () => updateOrderStatus(
+                                      order,
+                                      OrderStatus.delivered,
+                                    ),
+                                    icon: const Icon(Icons.done_all),
+                                    label: const Text('Mark delivered'),
+                                  ),
+                                  OutlinedButton.icon(
+                                    onPressed: () => reportIssue(order),
+                                    icon: const Icon(Icons.report_problem_outlined),
+                                    label: const Text('Report issue'),
+                                  ),
+                                ],
+                              ),
+                            if (order.history.isNotEmpty) ...[
+                              const SizedBox(height: 12),
+                              ExpansionTile(
+                                tilePadding: EdgeInsets.zero,
+                                title: const Text('Status history'),
+                                children: [
+                                  for (final entry in order.history)
+                                    ListTile(
+                                      dense: true,
+                                      contentPadding: EdgeInsets.zero,
+                                      title: Text(
+                                        entry.status ?? 'Note',
+                                        style: const TextStyle(fontWeight: FontWeight.w800),
+                                      ),
+                                      subtitle: Text(
+                                        [
+                                          if (entry.actorName.isNotEmpty) entry.actorName,
+                                          if (entry.note.isNotEmpty) entry.note,
+                                          if (entry.timestamp.isNotEmpty) entry.timestamp,
+                                        ].join(' • '),
+                                      ),
+                                    ),
+                                ],
+                              ),
+                            ],
+                            if (order.status == OrderStatus.delivered)
+                              const _InfoStrip(
+                                icon: Icons.check_circle,
+                                title: 'Delivered',
+                                subtitle: 'This order is already completed.',
+                              ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                    ],
+                  ],
+                );
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class _MyOrderCard extends StatelessWidget {
   const _MyOrderCard({
     required this.order,
@@ -2879,6 +3332,7 @@ class AdminScreen extends StatelessWidget {
     required this.session,
     required this.orders,
     required this.restaurants,
+    required this.riders,
     required this.onUpdateOrder,
     required this.onLogout,
     required this.onRestaurantCreated,
@@ -2888,8 +3342,9 @@ class AdminScreen extends StatelessWidget {
   final AuthSession session;
   final List<CustomerOrder> orders;
   final List<Restaurant> restaurants;
+  final List<UserSummary> riders;
   final Future<void> Function(CustomerOrder order, OrderStatus status,
-      {String? riderName}) onUpdateOrder;
+      {int? riderId, String? riderName, String? riderPhone}) onUpdateOrder;
   final VoidCallback onLogout;
   final ValueChanged<Restaurant> onRestaurantCreated;
   final ValueChanged<Restaurant> onRestaurantUpdated;
@@ -3038,7 +3493,11 @@ class AdminScreen extends StatelessWidget {
             const _EmptyOrdersPanel()
           else
             for (final order in orders) ...[
-              _AdminOrderCard(order: order, onUpdateOrder: onUpdateOrder),
+              _AdminOrderCard(
+                order: order,
+                riders: riders,
+                onUpdateOrder: onUpdateOrder,
+              ),
               const SizedBox(height: 12),
             ],
         ],
@@ -3470,12 +3929,14 @@ class _DialogField extends StatelessWidget {
 class _AdminOrderCard extends StatelessWidget {
   const _AdminOrderCard({
     required this.order,
+    required this.riders,
     required this.onUpdateOrder,
   });
 
   final CustomerOrder order;
+  final List<UserSummary> riders;
   final Future<void> Function(CustomerOrder order, OrderStatus status,
-      {String? riderName}) onUpdateOrder;
+      {int? riderId, String? riderName, String? riderPhone}) onUpdateOrder;
 
   @override
   Widget build(BuildContext context) {
@@ -3545,7 +4006,11 @@ class _AdminOrderCard extends StatelessWidget {
                 ),
               )
             else
-              _OrderActions(order: order, onUpdateOrder: onUpdateOrder),
+              _OrderActions(
+                order: order,
+                riders: riders,
+                onUpdateOrder: onUpdateOrder,
+              ),
           ],
         ),
       ),
@@ -3553,15 +4018,41 @@ class _AdminOrderCard extends StatelessWidget {
   }
 }
 
-class _OrderActions extends StatelessWidget {
+class _OrderActions extends StatefulWidget {
   const _OrderActions({
     required this.order,
+    required this.riders,
     required this.onUpdateOrder,
   });
 
   final CustomerOrder order;
+  final List<UserSummary> riders;
   final Future<void> Function(CustomerOrder order, OrderStatus status,
-      {String? riderName}) onUpdateOrder;
+      {int? riderId, String? riderName, String? riderPhone}) onUpdateOrder;
+
+  @override
+  State<_OrderActions> createState() => _OrderActionsState();
+}
+
+class _OrderActionsState extends State<_OrderActions> {
+  int? selectedRiderId;
+
+  @override
+  void initState() {
+    super.initState();
+    selectedRiderId = widget.order.riderId ??
+        (widget.riders.isNotEmpty ? widget.riders.first.id : null);
+  }
+
+  @override
+  void didUpdateWidget(covariant _OrderActions oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.order.riderId != oldWidget.order.riderId ||
+        widget.riders != oldWidget.riders) {
+      selectedRiderId = widget.order.riderId ??
+          (widget.riders.isNotEmpty ? widget.riders.first.id : null);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -3569,43 +4060,80 @@ class _OrderActions extends StatelessWidget {
       spacing: 8,
       runSpacing: 8,
       children: [
-        if (order.status == OrderStatus.pending) ...[
+        if (widget.order.status == OrderStatus.pending) ...[
           FilledButton.icon(
-            onPressed: () => onUpdateOrder(order, OrderStatus.accepted),
+            onPressed: () => widget.onUpdateOrder(widget.order, OrderStatus.accepted),
             icon: const Icon(Icons.check),
             label: const Text('Accept'),
           ),
           OutlinedButton.icon(
-            onPressed: () => onUpdateOrder(order, OrderStatus.rejected),
+            onPressed: () => widget.onUpdateOrder(widget.order, OrderStatus.rejected),
             icon: const Icon(Icons.close),
             label: const Text('Reject'),
           ),
         ],
-        if (order.status == OrderStatus.accepted)
+        if (widget.order.status == OrderStatus.accepted)
           FilledButton.icon(
-            onPressed: () => onUpdateOrder(order, OrderStatus.preparing),
+            onPressed: () => widget.onUpdateOrder(widget.order, OrderStatus.preparing),
             icon: const Icon(Icons.soup_kitchen),
             label: const Text('Start preparing'),
           ),
-        if (order.status == OrderStatus.preparing)
-          FilledButton.icon(
-            onPressed: () => onUpdateOrder(
-              order,
-              OrderStatus.riderAssigned,
-              riderName: 'Rider Rahim',
+        if (widget.order.status == OrderStatus.preparing)
+          SizedBox(
+            width: 280,
+            child: DropdownButtonFormField<int>(
+              initialValue: selectedRiderId,
+              decoration: const InputDecoration(
+                labelText: 'Select rider',
+                border: OutlineInputBorder(),
+                isDense: true,
+              ),
+              items: widget.riders
+                  .map(
+                    (rider) => DropdownMenuItem<int>(
+                      value: rider.id,
+                      child: Text('${rider.name} • ${rider.phone}'),
+                    ),
+                  )
+                  .toList(),
+              onChanged: widget.riders.isEmpty
+                  ? null
+                  : (value) {
+                      setState(() {
+                        selectedRiderId = value;
+                      });
+                    },
             ),
+          ),
+        if (widget.order.status == OrderStatus.preparing)
+          FilledButton.icon(
+            onPressed: widget.riders.isEmpty || selectedRiderId == null
+                ? null
+                : () {
+                    final rider = widget.riders.firstWhere(
+                      (entry) => entry.id == selectedRiderId,
+                      orElse: () => widget.riders.first,
+                    );
+                    widget.onUpdateOrder(
+                      widget.order,
+                      OrderStatus.riderAssigned,
+                      riderId: rider.id,
+                      riderName: rider.name,
+                      riderPhone: rider.phone,
+                    );
+                  },
             icon: const Icon(Icons.assignment_ind),
             label: const Text('Assign rider'),
           ),
-        if (order.status == OrderStatus.riderAssigned)
+        if (widget.order.status == OrderStatus.riderAssigned)
           FilledButton.icon(
-            onPressed: () => onUpdateOrder(order, OrderStatus.onTheWay),
+            onPressed: () => widget.onUpdateOrder(widget.order, OrderStatus.onTheWay),
             icon: const Icon(Icons.delivery_dining),
             label: const Text('Dispatch'),
           ),
-        if (order.status == OrderStatus.onTheWay)
+        if (widget.order.status == OrderStatus.onTheWay)
           FilledButton.icon(
-            onPressed: () => onUpdateOrder(order, OrderStatus.delivered),
+            onPressed: () => widget.onUpdateOrder(widget.order, OrderStatus.delivered),
             icon: const Icon(Icons.done_all),
             label: const Text('Mark delivered'),
           ),

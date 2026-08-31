@@ -27,6 +27,14 @@ const terminalStatuses = new Set(['delivered', 'rejected']);
 
 const categories = ['food', 'medicine', 'others'];
 const restaurantsPerPage = 7;
+const managementRoles = new Set(['admin', 'regionalAdmin']);
+const userRoleLabels = {
+  customer: 'Customer',
+  admin: 'Admin',
+  rider: 'Rider',
+  regionalAdmin: 'Regional admin',
+  other: 'Other',
+};
 
 function createBlankCart() {
   return {
@@ -183,6 +191,14 @@ const blankShop = () => ({
 
 const blankSignIn = { phone: '', password: '' };
 const blankSignUp = { name: '', phone: '', password: '' };
+const blankUserForm = {
+  name: '',
+  phone: '',
+  nid: '',
+  email: '',
+  address: '',
+  role: 'rider',
+};
 
 const heroSlides = [
   {
@@ -298,6 +314,32 @@ function normalizeOrders(value) {
 
 function normalizeInventoryRows(value) {
   return Array.isArray(value) ? value.filter((item) => item && typeof item === 'object') : [];
+}
+
+function isManagementRole(role) {
+  return managementRoles.has(role);
+}
+
+function formatUserRole(role) {
+  return userRoleLabels[role] || role || 'Unknown';
+}
+
+function normalizeUser(value) {
+  if (!value || typeof value !== 'object') {
+    return null;
+  }
+
+  return {
+    id: value.id,
+    name: value.name || '',
+    phone: value.phone || '',
+    nid: value.nid || '',
+    email: value.email || '',
+    address: value.address || '',
+    role: value.role || 'other',
+    isActive: value.isActive !== false,
+    createdAt: value.createdAt || null,
+  };
 }
 
 function buildInventoryLookup(inventoryRows) {
@@ -416,6 +458,7 @@ function App() {
   const [restaurants, setRestaurants] = useState([]);
   const [orders, setOrders] = useState([]);
   const [inventoryItems, setInventoryItems] = useState([]);
+  const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -450,6 +493,9 @@ function App() {
   const [shopForm, setShopForm] = useState(blankShop);
   const [shopErrors, setShopErrors] = useState({ products: [] });
   const [editingShopId, setEditingShopId] = useState(null);
+  const [userForm, setUserForm] = useState(blankUserForm);
+  const [userErrors, setUserErrors] = useState({});
+  const [userCreatedCredentials, setUserCreatedCredentials] = useState(null);
   const [heroSlide, setHeroSlide] = useState(0);
 
   useEffect(() => {
@@ -638,9 +684,12 @@ function App() {
   }, [session?.user]);
 
   useEffect(() => {
-    if (session?.user?.role === 'admin' && panel === 'browse') {
+    if (isManagementRole(session?.user?.role) && panel === 'browse') {
       setPanel('admin');
       setAdminSection('dashboard');
+    }
+    if (session?.user?.role === 'rider' && panel === 'browse') {
+      setPanel('rider');
     }
     if (session?.user?.role === 'customer' && panel === 'admin') {
       setPanel('browse');
@@ -747,17 +796,23 @@ function App() {
   async function reloadData(token = session?.token) {
     clearNotifications();
     try {
-      const [restaurantsPayload, shopsPayload, inventoryPayload] = await Promise.all([
-        api.getRestaurants(),
-        api.getShops(),
-        api.getInventory(),
-      ]);
+      const loadUsers = token && isManagementRole(session?.user?.role);
+      const [restaurantsPayload, shopsPayload, inventoryPayload, usersPayload, ordersPayload] =
+        await Promise.all([
+          api.getRestaurants(),
+          api.getShops(),
+          api.getInventory(),
+          loadUsers ? api.getUsers(token) : Promise.resolve(null),
+          token ? api.getOrders(token) : Promise.resolve(null),
+        ]);
       const inventoryRows = normalizeInventoryRows(inventoryPayload.inventory);
       setInventoryItems(inventoryRows);
       setRestaurants(mergeRestaurantsWithInventory(restaurantsPayload.restaurants || [], inventoryRows));
       setShops(mergeShopsWithInventory(shopsPayload.shops || [], inventoryRows));
-      if (token) {
-        const ordersPayload = await api.getOrders(token);
+      if (usersPayload) {
+        setUsers((usersPayload.users || []).map(normalizeUser).filter(Boolean));
+      }
+      if (ordersPayload) {
         setOrders(normalizeOrders(ordersPayload.orders));
       }
     } catch (err) {
@@ -776,9 +831,11 @@ function App() {
       setSignInForm(blankSignIn);
       setAuthMode('signin');
       setAuthOpen(false);
-      if (payload.user.role === 'admin') {
+      if (isManagementRole(payload.user.role)) {
         setPanel('admin');
         setAdminSection('dashboard');
+      } else if (payload.user.role === 'rider') {
+        setPanel('rider');
       } else {
         setPanel('browse');
       }
@@ -817,6 +874,7 @@ function App() {
   function clearSessionState() {
     setSession(null);
     setOrders([]);
+    setUsers([]);
     setCart(createBlankCart());
     setPanel('browse');
     setSuccess('');
@@ -824,6 +882,7 @@ function App() {
     setAuthOpen(false);
     setAuthMode('signin');
     setBusy(false);
+    setUserCreatedCredentials(null);
   }
 
   function openLogoutConfirm() {
@@ -1165,7 +1224,12 @@ function App() {
       return;
     }
     const status = draft.status || order?.status;
+    const riderId = draft.riderId ? Number(draft.riderId) : order?.riderId || null;
     if (!status) {
+      return;
+    }
+    if (status === 'riderAssigned' && !riderId) {
+      notify('error', 'Select a rider before assigning the order.');
       return;
     }
     clearNotifications();
@@ -1173,10 +1237,52 @@ function App() {
     try {
       await api.updateOrderStatus(session.token, orderCode, {
         status,
-        riderName: draft.riderName?.trim() || null,
+        riderId: riderId || null,
+        riderName: riderUsers.find((rider) => rider.id === riderId)?.name || order?.riderName || null,
+        riderPhone: riderUsers.find((rider) => rider.id === riderId)?.phone || order?.riderPhone || null,
       });
       await reloadData();
       notify('success', `Updated ${orderCode}.`);
+    } catch (err) {
+      notify('error', err.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleRiderStatusUpdate(orderCode, status) {
+    if (!session?.token) {
+      notify('error', 'Sign in first.');
+      return;
+    }
+    clearNotifications();
+    setBusy(true);
+    try {
+      await api.updateOrderStatus(session.token, orderCode, { status });
+      await reloadData();
+      notify('success', `Updated ${orderCode}.`);
+    } catch (err) {
+      notify('error', err.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleRiderIssue(orderCode) {
+    if (!session?.token) {
+      notify('error', 'Sign in first.');
+      return;
+    }
+    const issue = window.prompt('Describe the issue for this order');
+    if (!issue || !issue.trim()) {
+      return;
+    }
+    clearNotifications();
+    setBusy(true);
+    try {
+      await api.updateOrderStatus(session.token, orderCode, { issue: issue.trim() });
+      await reloadData();
+      notify('success', `Issue noted for ${orderCode}.`);
     } catch (err) {
       notify('error', err.message);
     } finally {
@@ -1453,8 +1559,86 @@ function App() {
     }
   }
 
+  function setUserField(field, value) {
+    setUserForm((current) => ({ ...current, [field]: value }));
+    setUserErrors((current) => ({ ...current, [field]: '' }));
+  }
+
+  function resetUserForm() {
+    setUserForm(blankUserForm);
+    setUserErrors({});
+  }
+
+  function validateUserForm() {
+    const nextErrors = {};
+    const phone = userForm.phone.trim();
+    const nid = userForm.nid.trim();
+
+    if (!userForm.name.trim()) {
+      nextErrors.name = 'Enter user name.';
+    }
+    if (!/^01[3-9]\d{8}$/.test(phone)) {
+      nextErrors.phone = 'Enter a valid 11-digit mobile number.';
+    }
+    if (!/^(?:\d{10}|\d{13}|\d{17})$/.test(nid)) {
+      nextErrors.nid = 'Enter a valid NID with 10, 13, or 17 digits.';
+    }
+    if (userForm.email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(userForm.email.trim())) {
+      nextErrors.email = 'Enter a valid email address.';
+    }
+
+    setUserErrors(nextErrors);
+    return Object.keys(nextErrors).length === 0;
+  }
+
+  async function handleUserSubmit(event) {
+    event.preventDefault();
+    if (!session?.token) {
+      notify('error', 'Sign in as admin first.');
+      return;
+    }
+    clearNotifications();
+    if (!validateUserForm()) {
+      return;
+    }
+
+    setBusy(true);
+    try {
+      const payload = {
+        name: userForm.name.trim(),
+        phone: userForm.phone.trim(),
+        nid: userForm.nid.trim(),
+        email: userForm.email.trim(),
+        address: userForm.address.trim(),
+        role: userForm.role,
+      };
+      const created = await api.createUser(session.token, payload);
+      const normalizedUser = normalizeUser(created.user);
+      if (normalizedUser) {
+        setUsers((current) => [normalizedUser, ...current.filter((user) => user.id !== normalizedUser.id)]);
+      }
+      setUserCreatedCredentials({
+        name: payload.name,
+        phone: payload.phone,
+        temporaryPassword: created.temporaryPassword || '',
+      });
+      resetUserForm();
+      await reloadData();
+      notify('success', `${payload.name} added as ${formatUserRole(payload.role)}.`);
+    } catch (err) {
+      notify('error', err.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
   const selectedMenuItems = selectedMerchant?.items || [];
-  const isAdmin = session?.user?.role === 'admin';
+  const isAdmin = isManagementRole(session?.user?.role);
+  const isRider = session?.user?.role === 'rider';
+  const riderUsers = useMemo(
+    () => users.filter((user) => user.role === 'rider' && user.isActive),
+    [users],
+  );
   const totalCatalogItems = merchants.reduce((total, merchant) => total + (merchant.items || []).length, 0);
   const activeOrdersCount = normalizedOrders.filter((order) => !terminalStatuses.has(order.status)).length;
   const shopCount = shopMerchants.length;
@@ -1477,6 +1661,11 @@ function App() {
         window.scrollTo({ top: 0, behavior: 'smooth' });
         return;
       }
+      if (isRider) {
+        setPanel('rider');
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+        return;
+      }
       setBrowseView('all');
       setPanel('browse');
       window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -1485,6 +1674,11 @@ function App() {
     if (section === 'restaurants') {
       if (isAdmin) {
         setPanel('admin');
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+        return;
+      }
+      if (isRider) {
+        setPanel('rider');
         window.scrollTo({ top: 0, behavior: 'smooth' });
         return;
       }
@@ -1500,11 +1694,19 @@ function App() {
         window.scrollTo({ top: 0, behavior: 'smooth' });
         return;
       }
+      if (isRider) {
+        setPanel('rider');
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+        return;
+      }
       setPanel('orders');
       window.scrollTo({ top: 0, behavior: 'smooth' });
       return;
     }
     if (section === 'cart') {
+      if (isRider) {
+        return;
+      }
       setPanel('cart');
       window.scrollTo({ top: 0, behavior: 'smooth' });
       return;
@@ -1559,6 +1761,10 @@ function App() {
                   Catalog
                 </button>
               </>
+            ) : isRider ? (
+              <button className={panel === 'rider' ? 'active' : ''} type="button" onClick={() => openSection('home')}>
+                Rider dashboard
+              </button>
             ) : (
               <>
                 <button className={panel === 'browse' ? 'active' : ''} type="button" onClick={() => openSection('home')}>
@@ -1578,7 +1784,7 @@ function App() {
           </nav>
 
           <div className="topbar-actions header-actions">
-            {!isAdmin ? (
+            {!isAdmin && !isRider ? (
               <button className="header-cart" type="button" onClick={() => openSection('cart')}>
                 <span className="header-cart-icon" aria-hidden="true">🛒</span>
                 <span className="header-cart-text">
@@ -1646,6 +1852,37 @@ function App() {
                 <strong>{shopCount}</strong>
                 <small>Stock-managed merchants</small>
               </div>
+            </div>
+          </section>
+        ) : isRider ? (
+          <section className="hero panel rider-hero">
+            <div className="hero-copy rider-hero-copy">
+              <p className="eyebrow">Rider dashboard</p>
+              <h2>Assigned orders only, nothing else.</h2>
+              <p>
+                Use this space to track the deliveries assigned to your account. All other storefront controls
+                stay hidden.
+              </p>
+              <div className="hero-stats">
+                <div>
+                  <strong>{normalizedOrders.length}</strong>
+                  <span>assigned orders</span>
+                </div>
+                <div>
+                  <strong>{normalizedOrders.filter((order) => order.status === 'onTheWay').length}</strong>
+                  <span>on the way</span>
+                </div>
+                <div>
+                  <strong>{normalizedOrders.filter((order) => order.status === 'delivered').length}</strong>
+                  <span>delivered</span>
+                </div>
+              </div>
+            </div>
+            <div className="panel rider-hero-card">
+              <p className="eyebrow">Logged in as</p>
+              <h3>{session?.user?.name}</h3>
+              <p className="muted">{session?.user?.phone}</p>
+              <p className="muted">Role: rider</p>
             </div>
           </section>
         ) : (
@@ -1738,7 +1975,7 @@ function App() {
 
         <section className="nav-panel panel">
           <div className="toolbar-actions">
-            {!session?.user || !isAdmin ? (
+            {!session?.user || (!isAdmin && !isRider) ? (
               <>
                 <button
                   className={panel === 'browse' ? 'button button-primary' : 'button button-ghost'}
@@ -1758,8 +1995,15 @@ function App() {
                   >
                     Cart
                   </button>
-               
               </>
+            ) : isRider ? (
+              <button
+                className={panel === 'rider' ? 'button button-primary' : 'button button-ghost'}
+                type="button"
+                onClick={() => setPanel('rider')}
+              >
+                Rider dashboard
+              </button>
             ) : (
               <>
                 <button
@@ -2097,20 +2341,27 @@ function App() {
                             </select>
                           </label>
                           <label>
-                            Rider name
-                            <input
+                            Rider
+                            <select
                               disabled={terminalStatuses.has(order.status)}
-                              value={orderDrafts[order.id]?.riderName ?? order.riderName ?? ''}
+                              value={orderDrafts[order.id]?.riderId ?? order.riderId ?? ''}
                               onChange={(event) =>
                                 setOrderDrafts((current) => ({
                                   ...current,
                                   [order.id]: {
                                     ...(current[order.id] || {}),
-                                    riderName: event.target.value,
+                                    riderId: event.target.value,
                                   },
                                 }))
                               }
-                            />
+                            >
+                              <option value="">Select rider</option>
+                              {riderUsers.map((rider) => (
+                                <option key={rider.id} value={rider.id}>
+                                  {rider.name} • {rider.phone}
+                                </option>
+                              ))}
+                            </select>
                           </label>
                         </div>
                         <button
@@ -2126,6 +2377,119 @@ function App() {
                   </article>
                 ))}
                 {visibleOrders.length === 0 ? <div className="empty-state">No orders found.</div> : null}
+              </div>
+            </div>
+          </section>
+        ) : null}
+
+        {panel === 'rider' && session?.user ? (
+          <section className="content-single">
+            <div className="panel">
+              <div className="section-head">
+                <div>
+                  <p className="eyebrow">Assigned orders</p>
+                  <h3>Rider dashboard</h3>
+                </div>
+                <span className="muted">{visibleOrders.length} records</span>
+              </div>
+
+              <div className="order-tabs">
+                <button
+                  className={orderView === 'all' ? 'active' : ''}
+                  type="button"
+                  onClick={() => setOrderView('all')}
+                >
+                  All assigned
+                </button>
+                <button
+                  className={orderView === 'today' ? 'active' : ''}
+                  type="button"
+                  onClick={() => setOrderView('today')}
+                >
+                  Today
+                </button>
+              </div>
+
+              <div className="orders-list">
+                {visibleOrders.map((order) => (
+                  <article className="order-card" key={order.id}>
+                    <div className="order-card-top">
+                      <div>
+                        <strong>{order.id}</strong>
+                        <p>{order.restaurantName}</p>
+                      </div>
+                      <span className={statusClass(order.status)}>{statusLabels[order.status]}</span>
+                    </div>
+                    <div className="order-meta">
+                      <span>{order.customerName}</span>
+                      <span>{order.phone}</span>
+                      <span>{new Date(order.createdAt).toLocaleString()}</span>
+                    </div>
+                    <div className="order-lines">
+                      {normalizeOrders(order.lines).map((line, index) => (
+                        <div key={`${order.id}-${index}`}>
+                          {line.quantity}x {line.item?.name || 'Item'}
+                        </div>
+                      ))}
+                    </div>
+                    <div className="order-total">
+                      <span>{formatMoney(order.total)}</span>
+                      <span>{order.address}</span>
+                    </div>
+                    <div className="order-admin-controls">
+                      {order.status === 'riderAssigned' ? (
+                        <button
+                          className="button button-primary"
+                          disabled={busy}
+                          type="button"
+                          onClick={() => handleRiderStatusUpdate(order.id, 'onTheWay')}
+                        >
+                          Mark on the way
+                        </button>
+                      ) : null}
+                      {order.status === 'onTheWay' ? (
+                        <button
+                          className="button button-primary"
+                          disabled={busy}
+                          type="button"
+                          onClick={() => handleRiderStatusUpdate(order.id, 'delivered')}
+                        >
+                          Mark delivered
+                        </button>
+                      ) : null}
+                      <button
+                        className="button button-ghost"
+                        disabled={busy}
+                        type="button"
+                        onClick={() => handleRiderIssue(order.id)}
+                      >
+                        Report issue
+                      </button>
+                    </div>
+                    <div className="order-total">
+                      <span>Assigned rider</span>
+                      <span>
+                        {order.riderName || session.user.name}
+                        {order.riderPhone ? ` • ${order.riderPhone}` : ''}
+                      </span>
+                    </div>
+                    {Array.isArray(order.history) && order.history.length ? (
+                      <details className="order-history">
+                        <summary>Status history</summary>
+                        <div className="order-history-list">
+                          {order.history.map((entry, index) => (
+                            <div key={`${order.id}-history-${index}`} className="order-history-item">
+                              <strong>{entry.status || 'Note'}</strong>
+                              <span>{entry.note || entry.actorRole || 'Update'}</span>
+                              <small>{entry.timestamp ? new Date(entry.timestamp).toLocaleString() : ''}</small>
+                            </div>
+                          ))}
+                        </div>
+                      </details>
+                    ) : null}
+                  </article>
+                ))}
+                {visibleOrders.length === 0 ? <div className="empty-state">No assigned orders found.</div> : null}
               </div>
             </div>
           </section>
@@ -2175,6 +2539,13 @@ function App() {
                   onClick={() => setAdminSection('inventory')}
                 >
                   Inventory
+                </button>
+                <button
+                  className={adminSection === 'users' ? 'active' : ''}
+                  type="button"
+                  onClick={() => setAdminSection('users')}
+                >
+                  Users
                 </button>
               </div>
 
@@ -2351,20 +2722,26 @@ function App() {
                             <td>{formatMoney(order.total)}</td>
                             <td>
                               <div className="admin-table-actions">
-                                <input
-                                  placeholder="Rider"
+                                <select
                                   disabled={terminalStatuses.has(order.status)}
-                                  value={orderDrafts[order.id]?.riderName ?? order.riderName ?? ''}
+                                  value={orderDrafts[order.id]?.riderId ?? order.riderId ?? ''}
                                   onChange={(event) =>
                                     setOrderDrafts((current) => ({
                                       ...current,
                                       [order.id]: {
                                         ...(current[order.id] || {}),
-                                        riderName: event.target.value,
+                                        riderId: event.target.value,
                                       },
                                     }))
                                   }
-                                />
+                                >
+                                  <option value="">Select rider</option>
+                                  {riderUsers.map((rider) => (
+                                    <option key={rider.id} value={rider.id}>
+                                      {rider.name} • {rider.phone}
+                                    </option>
+                                  ))}
+                                </select>
                                 <button
                                   className="button button-primary"
                                   disabled={busy || terminalStatuses.has(order.status)}
@@ -2951,6 +3328,132 @@ function App() {
                   ) : null}
                 </div>
               ) : null}
+
+              {adminSection === 'users' ? (
+                <div className="admin-split">
+                  <div className="panel">
+                    <div className="section-head">
+                      <div>
+                        <p className="eyebrow">User editor</p>
+                        <h3>Add new user</h3>
+                      </div>
+                      <button className="button button-ghost" type="button" onClick={resetUserForm}>
+                        Clear
+                      </button>
+                    </div>
+
+                    <form className="stack" onSubmit={handleUserSubmit}>
+                      <div className="two-col">
+                        <label>
+                          Name
+                          <input
+                            aria-invalid={userErrors.name ? 'true' : 'false'}
+                            value={userForm.name}
+                            onChange={(event) => setUserField('name', event.target.value)}
+                            placeholder="Full name"
+                          />
+                          {userErrors.name ? <span className="field-error">{userErrors.name}</span> : null}
+                        </label>
+                        <label>
+                          Role
+                          <select value={userForm.role} onChange={(event) => setUserField('role', event.target.value)}>
+                            <option value="rider">Rider</option>
+                            <option value="regionalAdmin">Regional admin</option>
+                            <option value="other">Other</option>
+                            <option value="customer">Customer</option>
+                          </select>
+                        </label>
+                      </div>
+
+                      <div className="two-col">
+                        <label>
+                          Mobile number
+                          <input
+                            aria-invalid={userErrors.phone ? 'true' : 'false'}
+                            value={userForm.phone}
+                            onChange={(event) => setUserField('phone', event.target.value)}
+                            placeholder="01xxxxxxxxx"
+                          />
+                          {userErrors.phone ? <span className="field-error">{userErrors.phone}</span> : null}
+                        </label>
+                        <label>
+                          NID
+                          <input
+                            aria-invalid={userErrors.nid ? 'true' : 'false'}
+                            value={userForm.nid}
+                            onChange={(event) => setUserField('nid', event.target.value)}
+                            placeholder="10, 13, or 17 digits"
+                          />
+                          {userErrors.nid ? <span className="field-error">{userErrors.nid}</span> : null}
+                        </label>
+                      </div>
+
+                      <div className="two-col">
+                        <label>
+                          Email
+                          <input
+                            aria-invalid={userErrors.email ? 'true' : 'false'}
+                            value={userForm.email}
+                            onChange={(event) => setUserField('email', event.target.value)}
+                            placeholder="Optional"
+                          />
+                          {userErrors.email ? <span className="field-error">{userErrors.email}</span> : null}
+                        </label>
+                        <label>
+                          Address
+                          <input
+                            value={userForm.address}
+                            onChange={(event) => setUserField('address', event.target.value)}
+                            placeholder="Optional"
+                          />
+                        </label>
+                      </div>
+
+                      <button className="button button-primary" disabled={busy} type="submit">
+                        Create user
+                      </button>
+                    </form>
+
+                    {userCreatedCredentials ? (
+                      <div className="alert alert-success" style={{ marginTop: 16 }}>
+                        <strong>{userCreatedCredentials.name}</strong>
+                        <div>Mobile: {userCreatedCredentials.phone}</div>
+                        <div>Temporary password: {userCreatedCredentials.temporaryPassword}</div>
+                      </div>
+                    ) : null}
+                  </div>
+
+                  <div className="panel">
+                    <div className="section-head">
+                      <div>
+                        <p className="eyebrow">Existing users</p>
+                        <h3>Active accounts</h3>
+                      </div>
+                      <span className="muted">{users.length} records</span>
+                    </div>
+
+                    <div className="restaurant-list">
+                      {users.map((user) => (
+                        <article className="admin-restaurant-row" key={user.id}>
+                          <div>
+                            <span>
+                              {user.name} <small>{formatUserRole(user.role)}</small>
+                            </span>
+                            <small>
+                              {user.phone}
+                              {user.nid ? ` • NID ${user.nid}` : ''}
+                            </small>
+                          </div>
+                          <div className="restaurant-row-actions">
+                            <span className="muted">{user.email || 'No email'}</span>
+                          </div>
+                        </article>
+                      ))}
+                    </div>
+                    {users.length === 0 ? <div className="empty-state">No users found.</div> : null}
+                  </div>
+                </div>
+              ) : null}
             </div>
           </section>
         ) : null}
@@ -3009,7 +3512,7 @@ function App() {
               {authMode === 'signin' ? (
                 <form className="stack" onSubmit={handleSignIn}>
                   <label>
-                    Phone
+                    Mobile number
                     <input
                       value={signInForm.phone}
                       aria-invalid={authFieldErrors.phone ? 'true' : 'false'}
@@ -3079,7 +3582,7 @@ function App() {
                     {authFieldErrors.name ? <div className="field-error">{authFieldErrors.name}</div> : null}
                   </label>
                   <label>
-                    Phone
+                    Mobile number
                     <input
                       value={signUpForm.phone}
                       aria-invalid={authFieldErrors.phone ? 'true' : 'false'}

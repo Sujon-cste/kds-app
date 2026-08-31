@@ -1,3 +1,4 @@
+import crypto from 'crypto';
 import bcrypt from 'bcryptjs';
 import cors from 'cors';
 import dotenv from 'dotenv';
@@ -11,6 +12,7 @@ const app = express();
 const port = Number(process.env.PORT || 4000);
 const host = process.env.HOST || '0.0.0.0';
 const jwtSecret = process.env.JWT_SECRET || 'dev-secret';
+const userRoles = new Set(['customer', 'admin', 'rider', 'regionalAdmin', 'other']);
 const corsOrigins = (process.env.CORS_ORIGINS || '*')
   .split(',')
   .map((origin) => origin.trim())
@@ -52,7 +54,35 @@ function asyncRoute(handler) {
 }
 
 function normalizePhone(phone) {
-  return String(phone || '').replace(/[^\d+]/g, '');
+  const digits = String(phone || '').replace(/\D/g, '');
+  if (digits.startsWith('880') && digits.length === 13) {
+    return `0${digits.slice(3)}`;
+  }
+  if (digits.startsWith('88') && digits.length === 12) {
+    return `0${digits.slice(2)}`;
+  }
+  return digits;
+}
+
+function normalizeNid(nid) {
+  return String(nid || '').replace(/\D/g, '');
+}
+
+function normalizeRole(role) {
+  const normalized = String(role || 'customer').trim();
+  return userRoles.has(normalized) ? normalized : 'customer';
+}
+
+function isValidBangladeshPhone(phone) {
+  return /^01[3-9]\d{8}$/.test(phone);
+}
+
+function isValidNid(nid) {
+  return /^(?:\d{10}|\d{13}|\d{17})$/.test(nid);
+}
+
+function generateTemporaryPassword() {
+  return crypto.randomBytes(5).toString('hex');
 }
 
 function normalizeMenuCategory(category) {
@@ -82,6 +112,45 @@ function publicUser(user) {
   };
 }
 
+function adminUser(user) {
+  return {
+    id: user.id,
+    name: user.name,
+    phone: user.phone,
+    nid: user.nid || '',
+    email: user.email || '',
+    address: user.address || '',
+    role: user.role,
+    isActive: Boolean(user.is_active ?? user.isActive ?? 1),
+    createdAt: user.created_at || user.createdAt || null,
+  };
+}
+
+function parseOrderHistory(value) {
+  if (!value) {
+    return [];
+  }
+  if (Array.isArray(value)) {
+    return value.filter((entry) => entry && typeof entry === 'object');
+  }
+  try {
+    const parsed = JSON.parse(value);
+    return Array.isArray(parsed) ? parsed.filter((entry) => entry && typeof entry === 'object') : [];
+  } catch {
+    return [];
+  }
+}
+
+function createOrderHistoryEntry({ status, actorRole, actorName, note, timestamp = new Date().toISOString() }) {
+  return {
+    status: status || null,
+    actorRole: actorRole || '',
+    actorName: actorName || '',
+    note: note || '',
+    timestamp,
+  };
+}
+
 function healthPayload() {
   return {
     ok: true,
@@ -101,7 +170,12 @@ function auth(requiredRole) {
 
     try {
       const user = jwt.verify(token, jwtSecret);
-      if (requiredRole && user.role !== requiredRole) {
+      const allowedRoles = Array.isArray(requiredRole)
+        ? requiredRole
+        : requiredRole
+          ? [requiredRole]
+          : null;
+      if (allowedRoles && !allowedRoles.includes(user.role)) {
         response.status(403).json({ message: 'Forbidden' });
         return;
       }
@@ -115,7 +189,7 @@ function auth(requiredRole) {
 
 async function findUserByPhone(phone) {
   const [rows] = await pool.execute(
-    'SELECT id, name, phone, password_hash, role FROM users WHERE phone = ? AND is_active = 1 LIMIT 1',
+    'SELECT id, name, phone, nid, email, address, password_hash, role, is_active, created_at FROM users WHERE phone = ? AND is_active = 1 LIMIT 1',
     [phone],
   );
   return rows[0] || null;
@@ -124,8 +198,8 @@ async function findUserByPhone(phone) {
 async function createCustomer({ name, phone, password }) {
   const passwordHash = await bcrypt.hash(password, 10);
   const [result] = await pool.execute(
-    'INSERT INTO users (name, phone, password_hash, role) VALUES (?, ?, ?, ?)',
-    [name, phone, passwordHash, 'customer'],
+    'INSERT INTO users (name, phone, nid, email, address, password_hash, role) VALUES (?, ?, ?, ?, ?, ?, ?)',
+    [name, phone, null, null, null, passwordHash, 'customer'],
   );
   return {
     id: result.insertId,
@@ -133,6 +207,34 @@ async function createCustomer({ name, phone, password }) {
     phone,
     role: 'customer',
   };
+}
+
+async function createAdminUser({ name, phone, nid, email, address, role, password }) {
+  const passwordHash = await bcrypt.hash(password, 10);
+  const normalizedRole = normalizeRole(role);
+  const [result] = await pool.execute(
+    'INSERT INTO users (name, phone, nid, email, address, password_hash, role) VALUES (?, ?, ?, ?, ?, ?, ?)',
+    [name, phone, nid || null, email || null, address || null, passwordHash, normalizedRole],
+  );
+  return {
+    id: result.insertId,
+    name,
+    phone,
+    nid: nid || '',
+    email: email || '',
+    address: address || '',
+    role: normalizedRole,
+  };
+}
+
+async function readUsers(whereSql = '', params = []) {
+  const [rows] = await pool.execute(
+    `SELECT id, name, phone, nid, email, address, role, is_active, created_at
+     FROM users ${whereSql}
+     ORDER BY FIELD(role, 'rider', 'regionalAdmin', 'admin', 'customer', 'other'), name ASC, id ASC`,
+    params,
+  );
+  return rows.map(adminUser);
 }
 
 function mapOrder(row, items) {
@@ -146,7 +248,12 @@ function mapOrder(row, items) {
     deliveryFee: row.delivery_fee,
     total: row.total,
     status: row.status,
+    riderId: row.rider_id ?? null,
     riderName: row.rider_name,
+    riderPhone: row.rider_phone || '',
+    riderIssue: row.rider_issue || '',
+    riderIssueAt: row.rider_issue_at || null,
+    history: parseOrderHistory(row.status_history),
     createdAt: row.created_at,
     lines: items.map((item) => ({
       quantity: item.quantity,
@@ -321,6 +428,13 @@ async function ensureColumn(tableName, columnName, definition, afterColumn) {
 }
 
 async function ensureSchema() {
+  await ensureColumn('users', 'nid', 'VARCHAR(20) NULL', 'phone');
+  await ensureColumn('users', 'email', 'VARCHAR(160) NULL', 'nid');
+  await ensureColumn('users', 'address', 'VARCHAR(255) NULL', 'email');
+  await pool.execute(
+    `ALTER TABLE users
+     MODIFY COLUMN role ENUM('customer', 'admin', 'rider', 'regionalAdmin', 'other') NOT NULL DEFAULT 'customer'`,
+  );
   await ensureColumn('restaurants', 'image_url', 'LONGTEXT NULL', 'color_hex');
   await ensureColumn('restaurant_menu_items', 'image_url', 'LONGTEXT NULL', 'tag');
   await pool.execute(
@@ -369,6 +483,11 @@ async function ensureSchema() {
   await ensureColumn('inventory_items', 'track_stock', 'TINYINT(1) NOT NULL DEFAULT 1', 'stock_qty');
   await ensureColumn('inventory_items', 'is_active', 'TINYINT(1) NOT NULL DEFAULT 1', 'track_stock');
   await ensureColumn('shop_products', 'track_stock', 'TINYINT(1) NOT NULL DEFAULT 1', 'stock_qty');
+  await ensureColumn('orders', 'rider_id', 'BIGINT UNSIGNED NULL', 'rider_name');
+  await ensureColumn('orders', 'rider_phone', 'VARCHAR(30) NULL', 'rider_id');
+  await ensureColumn('orders', 'status_history', 'LONGTEXT NULL', 'rider_phone');
+  await ensureColumn('orders', 'rider_issue', 'VARCHAR(255) NULL', 'status_history');
+  await ensureColumn('orders', 'rider_issue_at', 'TIMESTAMP NULL', 'rider_issue');
 
   await pool.execute(
     `UPDATE inventory_items
@@ -555,8 +674,8 @@ app.post('/auth/signup', asyncRoute(async (request, response) => {
   const phone = normalizePhone(request.body.phone);
   const name = String(request.body.name || '').trim();
   const password = String(request.body.password || '');
-  if (!name || !phone || password.length < 6) {
-    response.status(400).json({ message: 'Name, phone, and 6+ character password are required' });
+  if (!name || !isValidBangladeshPhone(phone) || password.length < 6) {
+    response.status(400).json({ message: 'Name, valid mobile number, and 6+ character password are required' });
     return;
   }
 
@@ -577,7 +696,7 @@ app.post('/auth/signin', asyncRoute(async (request, response) => {
   const phone = normalizePhone(request.body.phone);
   const password = String(request.body.password || '');
   if (!phone || !password) {
-    response.status(400).json({ message: 'Phone and password are required' });
+    response.status(400).json({ message: 'Mobile number and password are required' });
     return;
   }
 
@@ -596,6 +715,66 @@ app.post('/auth/signin', asyncRoute(async (request, response) => {
   response.json({
     token: signToken(user),
     user: publicUser(user),
+  });
+}));
+
+app.get('/users', auth(['admin', 'regionalAdmin']), asyncRoute(async (request, response) => {
+  const role = String(request.query.role || '').trim();
+  const users = role && userRoles.has(role)
+    ? await readUsers('WHERE role = ? AND is_active = 1', [role])
+    : await readUsers('WHERE is_active = 1');
+  response.json({ users });
+}));
+
+app.post('/users', auth(['admin', 'regionalAdmin']), asyncRoute(async (request, response) => {
+  const name = String(request.body.name || '').trim();
+  const phone = normalizePhone(request.body.phone);
+  const nid = normalizeNid(request.body.nid);
+  const email = String(request.body.email || '').trim();
+  const address = String(request.body.address || '').trim();
+  const role = normalizeRole(request.body.role);
+  const password = String(request.body.password || '').trim() || generateTemporaryPassword();
+
+  if (!name) {
+    response.status(400).json({ message: 'Name is required' });
+    return;
+  }
+  if (!isValidBangladeshPhone(phone)) {
+    response.status(400).json({ message: 'Enter a valid 11-digit mobile number' });
+    return;
+  }
+  if (!isValidNid(nid)) {
+    response.status(400).json({ message: 'Enter a valid NID with 10, 13, or 17 digits' });
+    return;
+  }
+  if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    response.status(400).json({ message: 'Enter a valid email address' });
+    return;
+  }
+
+  const existingPhone = await findUserByPhone(phone);
+  if (existingPhone) {
+    response.status(409).json({ message: 'Phone number already registered' });
+    return;
+  }
+
+  const [nidRows] = await pool.execute(
+    'SELECT id FROM users WHERE nid = ? AND is_active = 1 LIMIT 1',
+    [nid],
+  );
+  if (nidRows.length > 0) {
+    response.status(409).json({ message: 'NID already registered' });
+    return;
+  }
+
+  const user = await createAdminUser({ name, phone, nid, email, address, role, password });
+  response.status(201).json({
+    user: adminUser({
+      ...user,
+      is_active: 1,
+      created_at: new Date().toISOString(),
+    }),
+    temporaryPassword: password,
   });
 }));
 
@@ -927,10 +1106,17 @@ app.post('/orders', auth('customer'), asyncRoute(async (request, response) => {
   try {
     await connection.beginTransaction();
     const total = Number(subtotal) + Number(deliveryFee);
+    const createdAt = new Date().toISOString();
+    const initialHistory = [createOrderHistoryEntry({
+      status: 'pending',
+      actorRole: 'customer',
+      actorName: request.user.name,
+      timestamp: createdAt,
+    })];
     const [orderResult] = await connection.execute(
       `INSERT INTO orders
-       (order_code, customer_id, restaurant_name, customer_name, phone, address, subtotal, delivery_fee, total)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       (order_code, customer_id, restaurant_name, customer_name, phone, address, subtotal, delivery_fee, total, status_history)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         `KDS-${Date.now()}`,
         request.user.id,
@@ -941,6 +1127,7 @@ app.post('/orders', auth('customer'), asyncRoute(async (request, response) => {
         subtotal,
         deliveryFee,
         total,
+        JSON.stringify(initialHistory),
       ],
     );
 
@@ -991,22 +1178,29 @@ app.post('/orders', auth('customer'), asyncRoute(async (request, response) => {
 }));
 
 app.get('/orders', auth(), asyncRoute(async (request, response) => {
-  const orders = request.user.role === 'admin'
+  const orders = request.user.role === 'admin' || request.user.role === 'regionalAdmin'
     ? await readOrders()
-    : await readOrders('WHERE customer_id = ?', [request.user.id]);
+    : request.user.role === 'rider'
+      ? await readOrders('WHERE rider_id = ?', [request.user.id])
+      : await readOrders('WHERE customer_id = ?', [request.user.id]);
   response.json({ orders });
 }));
 
 app.get('/orders/:orderCode', auth(), asyncRoute(async (request, response) => {
   const [rows] = await pool.execute(
-    'SELECT customer_id FROM orders WHERE order_code = ? LIMIT 1',
+    'SELECT customer_id, rider_id FROM orders WHERE order_code = ? LIMIT 1',
     [request.params.orderCode],
   );
   if (rows.length === 0) {
     response.status(404).json({ message: 'Order not found' });
     return;
   }
-  if (request.user.role !== 'admin' && rows[0].customer_id !== request.user.id) {
+  if (
+    request.user.role !== 'admin' &&
+    request.user.role !== 'regionalAdmin' &&
+    rows[0].customer_id !== request.user.id &&
+    rows[0].rider_id !== request.user.id
+  ) {
     response.status(403).json({ message: 'Forbidden' });
     return;
   }
@@ -1015,8 +1209,10 @@ app.get('/orders/:orderCode', auth(), asyncRoute(async (request, response) => {
   response.json({ order });
 }));
 
-app.patch('/orders/:orderCode/status', auth('admin'), asyncRoute(async (request, response) => {
-  const { status, riderName } = request.body;
+app.patch('/orders/:orderCode/status', auth(['admin', 'regionalAdmin', 'rider']), asyncRoute(async (request, response) => {
+  const status = String(request.body.status || '').trim();
+  const issue = String(request.body.issue || request.body.riderIssue || '').trim();
+  const riderId = request.body.riderId ? Number(request.body.riderId) : null;
   const allowedStatuses = [
     'pending',
     'accepted',
@@ -1026,14 +1222,102 @@ app.patch('/orders/:orderCode/status', auth('admin'), asyncRoute(async (request,
     'delivered',
     'rejected',
   ];
-  if (!allowedStatuses.includes(status)) {
+  if (!status && !issue) {
+    response.status(400).json({ message: 'Provide a status update or rider issue note' });
+    return;
+  }
+
+  if (status && !allowedStatuses.includes(status)) {
     response.status(400).json({ message: 'Invalid status' });
     return;
   }
 
+  const [orderRows] = await pool.execute(
+    'SELECT id, customer_id, rider_id, status FROM orders WHERE order_code = ? LIMIT 1',
+    [request.params.orderCode],
+  );
+  if (orderRows.length === 0) {
+    response.status(404).json({ message: 'Order not found' });
+    return;
+  }
+  const currentOrder = orderRows[0];
+  if (request.user.role === 'rider') {
+    if (!currentOrder.rider_id || Number(currentOrder.rider_id) !== request.user.id) {
+      response.status(403).json({ message: 'Forbidden' });
+      return;
+    }
+    if (status) {
+      const riderAllowedTransitions = new Set(['onTheWay', 'delivered']);
+      if (!riderAllowedTransitions.has(status)) {
+        response.status(400).json({ message: 'Riders can only move orders to on the way or delivered' });
+        return;
+      }
+      if (status === 'onTheWay' && currentOrder.status !== 'riderAssigned' && currentOrder.status !== 'onTheWay') {
+        response.status(400).json({ message: 'Order must be assigned before it can be marked on the way' });
+        return;
+      }
+      if (status === 'delivered' && currentOrder.status !== 'onTheWay') {
+        response.status(400).json({ message: 'Order must be on the way before it can be marked delivered' });
+        return;
+      }
+    }
+  }
+
+  let rider = null;
+  if (riderId) {
+    const [rows] = await pool.execute(
+      'SELECT id, name, phone FROM users WHERE id = ? AND role = ? AND is_active = 1 LIMIT 1',
+      [riderId, 'rider'],
+    );
+    rider = rows[0] || null;
+    if (!rider) {
+      response.status(400).json({ message: 'Select a valid rider' });
+      return;
+    }
+  }
+
+  const riderName = rider?.name || String(request.body.riderName || '').trim() || null;
+  const riderPhone = rider?.phone || normalizePhone(request.body.riderPhone || '') || null;
+  const history = parseOrderHistory(currentOrder.status_history);
+  const timestamp = new Date().toISOString();
+  if (status) {
+    history.push(createOrderHistoryEntry({
+      status,
+      actorRole: request.user.role,
+      actorName: request.user.name,
+      timestamp,
+    }));
+  }
+  if (issue) {
+    history.push(createOrderHistoryEntry({
+      status: currentOrder.status,
+      actorRole: request.user.role,
+      actorName: request.user.name,
+      note: issue,
+      timestamp,
+    }));
+  }
+  const statusValue = status || null;
   await pool.execute(
-    'UPDATE orders SET status = ?, rider_name = COALESCE(?, rider_name) WHERE order_code = ?',
-    [status, riderName || null, request.params.orderCode],
+    `UPDATE orders
+     SET status = COALESCE(?, status),
+         rider_id = COALESCE(?, rider_id),
+         rider_name = COALESCE(?, rider_name),
+         rider_phone = COALESCE(?, rider_phone),
+         rider_issue = COALESCE(?, rider_issue),
+         rider_issue_at = COALESCE(?, rider_issue_at),
+         status_history = ?
+     WHERE order_code = ?`,
+    [
+      statusValue,
+      rider?.id || riderId || null,
+      riderName,
+      riderPhone,
+      issue || null,
+      issue ? new Date().toISOString() : null,
+      JSON.stringify(history),
+      request.params.orderCode,
+    ],
   );
   const [orders] = await readOrders('WHERE order_code = ?', [request.params.orderCode]);
   response.json({ order: orders });

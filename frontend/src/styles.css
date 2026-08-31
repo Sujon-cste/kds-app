@@ -152,6 +152,18 @@ p {
   color: #1e3a8a;
 }
 
+.shell-admin .rider-hero {
+  grid-template-columns: minmax(0, 1.5fr) minmax(280px, 0.85fr);
+  align-items: stretch;
+}
+
+.shell-admin .rider-hero-card {
+  display: grid;
+  align-content: start;
+  gap: 10px;
+  background: rgba(248, 251, 255, 0.95);
+}
+
 .site-header,
 .hero,
 .toolbar,
@@ -613,6 +625,13 @@ p {
 
 .admin-table-orders select,
 .admin-table-actions input {
+  width: 100%;
+  min-width: 0;
+  padding: 0.65rem 0.8rem;
+  border-radius: 12px;
+}
+
+.admin-table-actions select {
   width: 100%;
   min-width: 0;
   padding: 0.65rem 0.8rem;
@@ -1381,6 +1400,41 @@ select[aria-invalid="true"] {
   gap: 12px;
   border-top: 1px solid var(--line);
   padding-top: 12px;
+}
+
+.order-history {
+  border-top: 1px solid var(--line);
+  padding-top: 12px;
+}
+
+.order-history summary {
+  cursor: pointer;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.order-history-list {
+  display: grid;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.order-history-item {
+  display: grid;
+  gap: 4px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.order-history-item strong {
+  color: var(--text);
+}
+
+.order-history-item span,
+.order-history-item small {
+  color: var(--muted);
 }
 
 .cart-box {

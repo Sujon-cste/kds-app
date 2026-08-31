@@ -1,5 +1,12 @@
 # Project-level configuration.
 cmake_minimum_required(VERSION 3.13)
+
+# Some desktop launchers inherit a broken CXX=clang++ setting even when clang++
+# is not installed. Force a usable compiler for Linux desktop builds.
+if(DEFINED ENV{CXX} AND "$ENV{CXX}" STREQUAL "clang++")
+  set(ENV{CXX} "g++")
+endif()
+
 project(runner LANGUAGES CXX)
 
 # The name of the executable created for the application. Change this to change

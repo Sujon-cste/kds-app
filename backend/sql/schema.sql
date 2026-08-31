@@ -8,8 +8,11 @@ CREATE TABLE IF NOT EXISTS users (
   id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
   name VARCHAR(120) NOT NULL,
   phone VARCHAR(30) NOT NULL UNIQUE,
+  nid VARCHAR(20) NULL,
+  email VARCHAR(160) NULL,
+  address VARCHAR(255) NULL,
   password_hash VARCHAR(255) NOT NULL,
-  role ENUM('customer', 'admin') NOT NULL DEFAULT 'customer',
+  role ENUM('customer', 'admin', 'rider', 'regionalAdmin', 'other') NOT NULL DEFAULT 'customer',
   is_active TINYINT(1) NOT NULL DEFAULT 1,
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
@@ -54,7 +57,12 @@ CREATE TABLE IF NOT EXISTS orders (
   delivery_fee INT NOT NULL,
   total INT NOT NULL,
   status ENUM('pending', 'accepted', 'preparing', 'riderAssigned', 'onTheWay', 'delivered', 'rejected') NOT NULL DEFAULT 'pending',
+  rider_id BIGINT UNSIGNED NULL,
   rider_name VARCHAR(120) NULL,
+  rider_phone VARCHAR(30) NULL,
+  status_history LONGTEXT NULL,
+  rider_issue VARCHAR(255) NULL,
+  rider_issue_at TIMESTAMP NULL,
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   CONSTRAINT fk_orders_customer FOREIGN KEY (customer_id) REFERENCES users(id)

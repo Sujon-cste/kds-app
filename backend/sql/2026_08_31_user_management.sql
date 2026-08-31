@@ -1,0 +1,16 @@
+USE kds_app;
+
+ALTER TABLE users
+  ADD COLUMN IF NOT EXISTS nid VARCHAR(20) NULL AFTER phone,
+  ADD COLUMN IF NOT EXISTS email VARCHAR(160) NULL AFTER nid,
+  ADD COLUMN IF NOT EXISTS address VARCHAR(255) NULL AFTER email;
+
+ALTER TABLE users
+  MODIFY COLUMN role ENUM('customer', 'admin', 'rider', 'regionalAdmin', 'other') NOT NULL DEFAULT 'customer';
+
+ALTER TABLE orders
+  ADD COLUMN IF NOT EXISTS rider_id BIGINT UNSIGNED NULL AFTER status,
+  ADD COLUMN IF NOT EXISTS rider_phone VARCHAR(30) NULL AFTER rider_name,
+  ADD COLUMN IF NOT EXISTS status_history LONGTEXT NULL AFTER rider_phone,
+  ADD COLUMN IF NOT EXISTS rider_issue VARCHAR(255) NULL AFTER status_history,
+  ADD COLUMN IF NOT EXISTS rider_issue_at TIMESTAMP NULL AFTER rider_issue;

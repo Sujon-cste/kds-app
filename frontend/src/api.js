@@ -54,6 +54,11 @@ export const api = {
   getRestaurants: () => request('/restaurants'),
   getShops: () => request('/shops'),
   getInventory: () => request('/inventory'),
+  getUsers: (token, role) => {
+    const query = role ? `?role=${encodeURIComponent(role)}` : '';
+    return request(`/users${query}`, { token });
+  },
+  createUser: (token, body) => request('/users', { method: 'POST', token, body }),
   getOrders: (token) => request('/orders', { token }),
   createOrder: (token, body) => request('/orders', { method: 'POST', token, body }),
   createRestaurant: (token, body) => request('/restaurants', { method: 'POST', token, body }),
