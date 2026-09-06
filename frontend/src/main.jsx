@@ -585,21 +585,17 @@ function App() {
   }, [browseView, merchants, search]);
 
   const selectedMerchant = useMemo(
-    () =>
-      merchants.find((merchant) => merchant.key === selectedMerchantKey) ||
-      filteredMerchants[0] ||
-      merchants[0] ||
-      null,
-    [filteredMerchants, merchants, selectedMerchantKey],
+    () => merchants.find((merchant) => merchant.key === selectedMerchantKey) || null,
+    [merchants, selectedMerchantKey],
   );
 
   useEffect(() => {
-    if (!filteredMerchants.length) {
+    if (!selectedMerchantKey) {
       return;
     }
     const stillVisible = filteredMerchants.some((merchant) => merchant.key === selectedMerchantKey);
     if (!stillVisible) {
-      setSelectedMerchantKey(filteredMerchants[0].key);
+      setSelectedMerchantKey(null);
     }
   }, [filteredMerchants, selectedMerchantKey]);
 
@@ -695,16 +691,6 @@ function App() {
       setPanel('browse');
     }
   }, [panel, session?.user?.role]);
-
-  useEffect(() => {
-    if (!merchants.length) {
-      return;
-    }
-    const stillExists = merchants.some((merchant) => merchant.key === selectedMerchantKey);
-    if (!stillExists) {
-      setSelectedMerchantKey(merchants[0].key);
-    }
-  }, [merchants, selectedMerchantKey]);
 
   useEffect(() => {
     if (restaurantPage > restaurantPageCount) {
@@ -2104,14 +2090,25 @@ function App() {
             <div className="panel">
               <div className="section-head">
                 <div>
-                  <p className="eyebrow">{selectedMerchant?.type === 'shop' ? 'Shop' : 'Restaurant'} items</p>
-                  <h3>{selectedMerchant ? selectedMerchant.name : 'Select a merchant'}</h3>
+                  <p className="eyebrow">
+                    {selectedMerchant?.type === 'shop'
+                      ? 'Shop items'
+                      : selectedMerchant
+                        ? 'Restaurant items'
+                        : 'Browse items'}
+                  </p>
+                  <h3>{selectedMerchant ? selectedMerchant.name : 'Select a restaurant or shop'}</h3>
                 </div>
                 <span className="muted">{selectedMenuItems.length} items</span>
               </div>
 
               {selectedMerchant ? (
                 <div className="menu-panel">
+                  {selectedMerchant.type === 'restaurant' && selectedMerchant.imageUrl ? (
+                    <div className="selected-restaurant-image">
+                      <img alt={selectedMerchant.name} src={selectedMerchant.imageUrl} loading="lazy" />
+                    </div>
+                  ) : null}
                   <div className="menu-list">
                     {selectedMenuItems.map((item) => {
                       const isShopItem = selectedMerchant.type === 'shop';
@@ -2154,7 +2151,20 @@ function App() {
                   </div>
                 </div>
               ) : (
-                <div className="empty-state">Pick a restaurant or shop from the list.</div>
+                <div className="menu-empty-state">
+                  <div className="menu-empty-state-art" aria-hidden="true">
+                    <div className="menu-empty-state-tap">Select a merchant</div>
+                    <div className="menu-empty-state-tile menu-empty-state-tile-large">
+                      <img alt="" src="/hero-biryani.png" />
+                    </div>
+                    <div className="menu-empty-state-tile menu-empty-state-tile-top">
+                      <img alt="" src="/hero-burger.png" />
+                    </div>
+                    <div className="menu-empty-state-tile menu-empty-state-tile-bottom">
+                      <img alt="" src="/hero-pasta.png" />
+                    </div>
+                  </div>
+                </div>
               )}
             </div>
           </section>

@@ -1217,6 +1217,102 @@ select:disabled {
   align-items: center;
 }
 
+.menu-empty-state {
+  position: relative;
+  overflow: hidden;
+  display: grid;
+  place-items: center;
+  min-height: 420px;
+  padding: 24px;
+  border: 1px solid rgba(255, 122, 24, 0.14);
+  border-radius: 28px;
+  background:
+    radial-gradient(circle at 12% 18%, rgba(255, 204, 51, 0.16), transparent 22%),
+    radial-gradient(circle at 90% 24%, rgba(255, 122, 24, 0.1), transparent 26%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(255, 250, 239, 0.98));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.9);
+}
+
+.menu-empty-state::before {
+  content: "";
+  position: absolute;
+  inset: auto 22px 22px auto;
+  width: 180px;
+  height: 180px;
+  border-radius: 50%;
+  background: rgba(255, 204, 51, 0.08);
+}
+
+.menu-empty-state-art {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  height: 100%;
+  min-height: 360px;
+}
+
+.menu-empty-state-tile {
+  position: absolute;
+  overflow: hidden;
+  border-radius: 24px;
+  border: 1px solid rgba(58, 37, 11, 0.08);
+  background: rgba(255, 255, 255, 0.38);
+  box-shadow: 0 18px 36px rgba(68, 43, 11, 0.06);
+  opacity: 0.22;
+}
+
+.menu-empty-state-tile img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  filter: saturate(0.9) contrast(0.96);
+}
+
+.menu-empty-state-tile-large {
+  inset: 2% auto auto 0;
+  width: 58%;
+  height: 58%;
+  z-index: 1;
+  transform: rotate(-7deg);
+}
+
+.menu-empty-state-tile-top {
+  top: 8%;
+  right: 0;
+  width: 36%;
+  height: 38%;
+  transform: rotate(9deg);
+  z-index: 2;
+}
+
+.menu-empty-state-tile-bottom {
+  left: 22%;
+  bottom: 0;
+  width: 42%;
+  height: 40%;
+  transform: rotate(5deg);
+  z-index: 2;
+}
+
+.menu-empty-state-tap {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  z-index: 3;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0.55rem 0.9rem;
+  border-radius: 999px;
+  background: rgba(17, 17, 17, 0.82);
+  color: #fff;
+  font-size: 0.76rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
 .empty-state,
 .loading {
   padding: 24px;
@@ -1271,6 +1367,18 @@ select:disabled {
 
 .image-preview-small img {
   height: 140px;
+}
+
+@media (max-width: 900px) {
+  .menu-empty-state {
+    min-height: 340px;
+  }
+
+  .menu-empty-state-art {
+    width: 100%;
+    height: 280px;
+    min-height: 280px;
+  }
 }
 
 .password-field {
